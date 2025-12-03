@@ -503,7 +503,7 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 "• 📈 Run ads that convert\n"
                 "• 🔓 Unlock premium tools (Canva, Netflix, Gemini & more AI	creator tools for free) for free\n"
                 "— — —\n\n"
-                "🚀 Choose “Gold” or “Silver” and get started with your preferred package!\n""
+                "🚀 Choose “Gold” or “Silver” and get started with your preferred package!\n"
                 "🎓 FOR PROPER GUIDANCE: you will gain access and be added to a mentorship class to learn how to make up to ₦300,000 weekly with the opportunities on Animo after registration.\n"
                 " Ensure to listen to the Voice Note below to understand more about the features you will benefit from...",
                 reply_markup=InlineKeyboardMarkup(keyboard)
