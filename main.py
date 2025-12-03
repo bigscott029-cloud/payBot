@@ -672,11 +672,11 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 reply_markup=InlineKeyboardMarkup(keyboard)
             )
             # Optional: alert admin that a registration payment flow started (with upgrade tag)
-            try:
-                upgrade_tag = " --Upgrade" if user_state[chat_id].get('upgrade') else ""
-                await context.bot.send_message(ADMIN_ID, f"User @{update.effective_user.username or 'Unknown'} (chat_id: {chat_id}) started registration for {user_state[chat_id].get('package')}{upgrade_tag}. Waiting for screenshot.")
-            except Exception:
-                pass
+            #try:
+            #    upgrade_tag = " --Upgrade" if user_state[chat_id].get('upgrade') else ""
+            #    await context.bot.send_message(ADMIN_ID, f"User @{update.effective_user.username or 'Unknown'} (chat_id: {chat_id}) started registration for {user_state[chat_id].get('package')}{upgrade_tag}. Waiting for screenshot.")
+            #except Exception:
+            #    pass
 
         elif data == "show_account_selection":
             package = user_state.get(chat_id, {}).get('package', '')
