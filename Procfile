@@ -1,1 +1,1 @@
-web: python EthBot.py
+web: python main.py
