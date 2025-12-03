@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# main.py — Tapify Main Bot for Telegram (management 3 patched)
+# main.py — Animo Main Bot for Telegram (management 3 patched)
 # Requirements:
 #   pip install python-telegram-bot==20.7 psycopg[binary] python-dotenv flask pydub
 #
@@ -40,7 +40,7 @@ app = Flask('')
 
 @app.route('/')
 def home():
-    return "Tapify is alive!"
+    return "Animo is alive!"
 
 
 def run():
@@ -59,7 +59,7 @@ GROUP_LINK = os.getenv("GROUP_LINK", "")
 SITE_LINK = os.getenv("SITE_LINK", "")
 AI_BOOST_LINK = os.getenv("AI_BOOST_LINK", "")
 DAILY_TASK_LINK = os.getenv("DAILY_TASK_LINK", "")
-WEBAPP_URL = os.getenv("WEBAPP_URL", "https://tapify.onrender.com/app")
+WEBAPP_URL = os.getenv("WEBAPP_URL", "https://Animo.onrender.com/app")
 
 # Validate environment variables
 if not BOT_TOKEN:
@@ -73,21 +73,21 @@ if not ADMIN_ID:
 PAYMENT_ACCOUNTS = {
     "Nigeria (Opay)": "󰐕 Account: 6110749592\nBank: Opay\nName: Chike Eluem Olanrewaju",
     "Nigeria (Zenith)": "󰐕 Account: 2267515466\nBank: Zenith Bank\nName: Chike Eluem Olanrewaju",
-    "Nigeria (Kuda)": "󰐕 Account: 2036035854\nBank: Kuda Bank\nName: Eluem, Chike Olanrewaju",
+    "Nigeria (MoniePoint)": "󰐕 Account: 5168745850\nBank: MoniePoint\nName: Chike Eluem Olanrewaju",
 }
 
 # Predefined coupon payment accounts
 COUPON_PAYMENT_ACCOUNTS = {
     "Coupon Acct 1 (Opay)": "󰐕 Account: 6110749592\nBank: Opay\nName: Chike Eluem Olanrewaju",
     "Coupon Acct 2 (Zenith)": "󰐕 Account: 2267515466\nBank: Zenith Bank\nName: Chike Eluem Olanrewaju",
-    "Coupon Acct 3 (Kuda)": "󰐕 Account: 2036035854\nBank: Kuda Bank\nName: Eluem, Chike Olanrewaju"
+    "Coupon Acct 3 (MoniePoint)": "󰐕 Account: 5168745850\nBank: MoniePoint\nName: Chike Eluem Olanrewaju",
 }
 
 # Predefined FAQs
 FAQS = {
     "what_is_ethereal": {
-        "question": "What is Tapify?",
-        "answer": "Tapify is a platform where you earn money by completing tasks like taking a walk, reading posts, playing games, sending Snapchat streaks, and inviting friends."
+        "question": "What is Animo?",
+        "answer": "Animo is a platform where you earn money by completing tasks like taking a walk, reading posts, playing games, sending Snapchat streaks, and inviting friends."
     },
     "payment_methods": {
         "question": "What payment methods are available?",
@@ -288,8 +288,8 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
             conn.commit()
         keyboard = [[InlineKeyboardButton("🚀 Get Started", callback_data="menu")]]
         await update.message.reply_text(
-            "Welcome to Tapify!\n\n"
-            "Social Media is the new Oil Money and Tapify will help you get started mining form it.\n"
+            "Welcome to Animo!\n\n"
+            "Social Media is the new Oil Money and Animo will help you get started mining form it.\n"
             "Get paid for using your phone and doing what you love most.\n"
             "• Read posts ➜ earn $2.5/10 words\n• Take a Walk ➜ earn $5\n"
             "• Connect with friends with streaks ➜ earn up to $20\n"
@@ -299,7 +299,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
         reply_keyboard = [["/menu(🔙)"]]
         if is_registered(chat_id):
-            reply_keyboard.append([KeyboardButton(text="Play Tapify", web_app=WebAppInfo(url=f"{WEBAPP_URL}/?chat_id={chat_id}"))])
+            reply_keyboard.append([KeyboardButton(text="Play Animo", web_app=WebAppInfo(url=f"{WEBAPP_URL}/?chat_id={chat_id}"))])
     except psycopg.Error as e:
         logger.error(f"Database error in start: {e}")
         await update.message.reply_text("An error occurred while accessing the database. Please try again later.")
@@ -311,10 +311,10 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def cmd_game(update: Update, context: ContextTypes.DEFAULT_TYPE):
     chat_id = update.effective_user.id
     if not is_registered(chat_id):
-        await update.message.reply_text("Please complete registration to get login's to Tapify.")
+        await update.message.reply_text("Please complete registration to get login's to Animo.")
         return
     kb = [[KeyboardButton(
-        text="Play Tapify",
+        text="Play Animo",
         web_app=WebAppInfo(
             url=f"{WEBAPP_URL}/?chat_id={chat_id}&username={update.effective_user.username or 'guest'}"
         )
@@ -467,52 +467,45 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 [InlineKeyboardButton("🔙 Main Menu", callback_data="menu")]
             ]
             await query.edit_message_text(
-                "🍊 HOW TAPIFY WORKS 💥\n\n"
-                "Tapify rewards you for your everyday online actions — walking, gaming, sending snaps, talking to foreigners, joining forums, mining Tap coins, and engaging socially.\n"
-                "Tapify also helps its users to get online or offline jobs.\n"
+                "💥 HOW ANIMO WORKS 💼🌍\n\n"
+                "ANIMO is a digital earning platform that helps you learn, earn, and grow — all from your smartphone. 📱\n"
+                "You get paid for simple daily actions like walking, posting, gaming, and more! 💰\n"
                 "— — —\n\n"
-                "📍 TAPIFY REGISTRATION PACKAGES\n"
-                "• Tapify Pro: ₦15,000\n"
-                "• Tapify Standard: ₦10,000\n"
+                "🥇 GOLD PACKAGE – ₦15,000\n"
+                "• 💸 Sponsor Commission: ₦13,000\n"
+                "• 💰 Instant Cashback: ₦13,000\n"
+                "• 💫 1st Level Spill: ₦400\n"
+                "• 🔁 2nd Level Spill: ₦100\n"
+                "• 🏃 Walk-To-Earn: ₦10 per step\n"
+                "• 📰 Article Post: ₦1,000\n"
+                "• 📸 Story Upload: ₦1,500\n"
                 "— — —\n\n"
-                "🚀 TAPIFY PRO PACKAGE\n"
-                "Earning Structure:\n"
-                "• 🪷 Newbie Bonus: ₦14,000\n"
-                "• 🛜 Freebie: 20GB Preferred Network Data or ₦8,000 Airtime\n"
-                "• 🏦 Tapify Loan: ₦50,000 – ₦1,500,000 with easy payback from your earnings and flexible payment.\n"
-                "• 🏠 Tapify Homes: Verified agents for home hunts provided with 10% cost coverage by Tapify.\n"
-                "• 📺 Ads Earnings: Watch ads and get paid up to $30 daily.\n"
-                "• 🚀 Tapify Boost: 10× faster earning than the Standard Package.\n"
+                "🥈 SILVER PACKAGE – ₦10,000\n"
+                "• 💸 Sponsor Commission: ₦9,000\n"
+                "• 💰 Instant Cashback: ₦8,500\n"
+                "• 💫 1st Level Spill: ₦200\n"
+                "• 🔁 2nd Level Spill: ₦100\n"
+                "• 🏃 Walk-To-Earn: ₦6 per step\n"
+                "• 📰 Article Post: ₦700\n"
+                "• 📸 Story Upload: ₦1,000\n"
                 "— — —\n\n"
-                "🔥 TAPIFY STANDARD PACKAGE\n"
-                "Earning Structure:\n"
-                "• 🎊 Newbie Bonus: ₦8,000\n"
-                "• 🛜 Freebie: 10GB Preferred Network Data or ₦5,000 Airtime\n"
-                "• 📩 Engage on Forum Topics: ₦200 per engagement\n"
+                "✨ EXTRA WAYS TO EARN\n"
+                "• 🎮 Play Games\n"
+                "• 💼 Offer Digital Gigs\n"
+                "• 📷 Join Photo Contests\n"
+                "• 📚 Publish Books\n"
+                "• 🏙️ Digital Real Estate\n"
                 "— — —\n\n"
-                "📨🧡 MORE EARNING FEATURES\n"
-                "• 🎥 TikTok or Snapchat Streak: ₦10,000 per streak kept\n"
-                "• 🏍 Rider Earnings: ₦8,000 per delivery\n"
-                "• 🚶‍♂ Step Earnings: ₦10,000 per 100 steps\n"
-                "• 💬 Chat with Foreigners: Earn up to $100 in tips\n"
-                "• 📤 Story Upload: ₦5,000 per approved topic\n"
-                "• 🎙 Recording Earnings: ₦200 per record upload\n"
-                "• 🌐 Daily Social Media Earnings: ₦5,000\n"
+                "🎓 MENTORSHIP COMMUNITY BENEFITS\n"
+                "Once you join, you’ll get access to an exclusive mentorship group where you’ll learn how to:\n"
+                "• 💰 Earn millions on ANIMO\n"
+                "• 🎬 Create viral content\n"
+                "• 📈 Run ads that convert\n"
+                "• 🔓 Unlock premium tools (Canva, Netflix, Gemini & more AI	creator tools for free) for free\n"
                 "— — —\n\n"
-                "💫 ADDITIONAL BENEFITS\n"
-                "• 🏦 Student Loan: No collateral required\n"
-                "• 🪙 Tapify Coin: Free mining for all users\n"
-                "• 📄 Tap Jobs: Tapify helps users find jobs online and offline\n"
-                "— — —\n\n"
-                "💖 ADDITIONAL EARNINGS\n"
-                "• 💰 Revenue Share: ₦13,000 – ₦9,000\n"
-                "• 🔄 Indirect Bonus: ₦500 – ₦250\n"
-                "• 🌀 2nd Indirect Bonus: ₦200 – ₦100\n"
-                "— — —\n\n"
-                "🏦 PAYMENT INFO\n"
-                "• 📆 MONDAYS, WEDNESDAYS, AND FRIDAYS\n\n"
-                "🎓 You’ll also be added to a mentorship class to learn how to make up to ₦300,000 weekly with the opportunities on Tapify after registration.\n"
-                " Ensure to listen to the Voice Note below to understand more about our features...",
+                "🚀 Choose “Gold” or “Silver” and get started with your preferred package!\n""
+                "🎓 FOR PROPER GUIDANCE: you will gain access and be added to a mentorship class to learn how to make up to ₦300,000 weekly with the opportunities on Animo after registration.\n"
+                " Ensure to listen to the Voice Note below to understand more about the features you will benefit from...",
                 reply_markup=InlineKeyboardMarkup(keyboard)
             )
             voice_keyboard = [
@@ -524,7 +517,7 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
                     await context.bot.send_voice(
                         chat_id=query.message.chat_id,
                         voice=voice,
-                        caption="Tapify Explained 🎧",
+                        caption="Animo Explained 🎧",
                         reply_markup=voice_markup
                     )
             except FileNotFoundError:
@@ -633,8 +626,8 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 return
             # Added reg_x option (Upgrade) here
             keyboard = [
-                [InlineKeyboardButton("✈Tapify Lite Package (₦10,000)", callback_data="reg_standard")],
-                [InlineKeyboardButton("🚀Tapify Pro Package (₦15,000)", callback_data="reg_x")],
+                [InlineKeyboardButton("✈Animo Silver Package (₦10,000)", callback_data="reg_standard")],
+                [InlineKeyboardButton("🚀Animo Gold Package (₦15,000)", callback_data="reg_x")],
                 [InlineKeyboardButton("🔙 Main Menu", callback_data="menu")],
             ]
             await query.edit_message_text("Choose your package:", reply_markup=InlineKeyboardMarkup(keyboard))
@@ -1248,8 +1241,8 @@ async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
                     raise ValueError
                 user_state[chat_id]['coupon_quantity'] = quantity
                 keyboard = [
-                    [InlineKeyboardButton("Lite Package Coupons (₦10,000)", callback_data="coupon_standard")],
-                    [InlineKeyboardButton("Pro Package Coupons (₦15,000)", callback_data="coupon_x")],
+                    [InlineKeyboardButton("Animo Silver Package Coupons (₦10,000)", callback_data="coupon_standard")],
+                    [InlineKeyboardButton("Animo Gold Package Coupons (₦15,000)", callback_data="coupon_x")],
                     [InlineKeyboardButton("🔙 Main Menu", callback_data="menu")],
                 ]
                 await update.message.reply_text("Select the package for your coupons:", reply_markup=InlineKeyboardMarkup(keyboard))
@@ -1355,7 +1348,7 @@ async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 [InlineKeyboardButton("No, disable reminders", callback_data="disable_reminders")],
             ]
             await context.bot.send_message(for_user, "Would you like to receive daily reminders to complete your tasks?", reply_markup=InlineKeyboardMarkup(keyboard))
-            reply_keyboard = [["/menu(🔙)"], [KeyboardButton(text="Play Tapify", web_app=WebAppInfo(url=f"{WEBAPP_URL}/?chat_id={for_user}"))],
+            reply_keyboard = [["/menu(🔙)"], [KeyboardButton(text="Play Animo", web_app=WebAppInfo(url=f"{WEBAPP_URL}/?chat_id={for_user}"))],
                               [KeyboardButton(text="Play Aviator", web_app=WebAppInfo(url=f"{WEBAPP_URL}/aviator?chat_id={chat_id}"))]]
             await context.bot.send_message(
                 for_user,
@@ -1416,7 +1409,7 @@ async def daily_reminder(context: ContextTypes.DEFAULT_TYPE):
         user_ids = [row["chat_id"] for row in cursor.fetchall()]
         for user_id in user_ids:
             try:
-                await context.bot.send_message(user_id, "🌟 Daily Reminder: Complete your Tapify tasks to maximize your earnings!")
+                await context.bot.send_message(user_id, "🌟 Daily Reminder: Complete your Animo tasks to maximize your earnings!")
                 log_interaction(user_id, "daily_reminder")
             except Exception as e:
                 logger.error(f"Failed to send reminder to {user_id}: {e}")
@@ -1476,7 +1469,7 @@ async def show_main_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
             [InlineKeyboardButton("How It Works", callback_data="how_it_works")],
             [InlineKeyboardButton("Purchase Coupon Code", callback_data="coupon")],
             [InlineKeyboardButton("💸 Get Registered Now", callback_data="package_selector")],
-            [InlineKeyboardButton("🚀 Upgrade To Tapify Pro", callback_data="package_selector")],  # upgrade quick button
+            [InlineKeyboardButton("🚀 Upgrade To Animo Pro", callback_data="package_selector")],  # upgrade quick button
             [InlineKeyboardButton("❓ Help", callback_data="help")],
         ]
         if user and user["payment_status"] == 'registered':
@@ -1492,19 +1485,19 @@ async def show_main_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
         text = "Select an option below:"
         reply_keyboard = [["/menu(🔙)"]]
         if user and user["payment_status"] == 'registered':
-            reply_keyboard.append([KeyboardButton(text="Start Earning On Tapify", web_app=WebAppInfo(url=f"{WEBAPP_URL}?chat_id={chat_id}"))])
+            reply_keyboard.append([KeyboardButton(text="Start Earning On Animo", web_app=WebAppInfo(url=f"{WEBAPP_URL}?chat_id={chat_id}"))])
         if update.callback_query:
             await update.callback_query.edit_message_text(text, reply_markup=InlineKeyboardMarkup(keyboard))
             await context.bot.send_message(
                 chat_id,
-                "Use the buttons below to access Main Menu and Start Earning on Tapify too",
+                "Use the buttons below to access Main Menu and Start Earning on Animo too",
                 reply_markup=ReplyKeyboardMarkup(reply_keyboard, resize_keyboard=True)
             )
         else:
             await update.message.reply_text(text, reply_markup=InlineKeyboardMarkup(keyboard))
             await context.bot.send_message(
                 chat_id,
-                "Use the buttons below to access the Menu button or Login to your Tapify Account(Available if you're registered):",
+                "Use the buttons below to access the Menu button or Login to your Animo Account(Available if you're registered):",
                 reply_markup=ReplyKeyboardMarkup(reply_keyboard, resize_keyboard=True)
             )
         log_interaction(chat_id, "show_main_menu")
