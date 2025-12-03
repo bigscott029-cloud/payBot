@@ -1469,7 +1469,7 @@ async def show_main_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
             [InlineKeyboardButton("How It Works", callback_data="how_it_works")],
             [InlineKeyboardButton("Purchase Coupon Code", callback_data="coupon")],
             [InlineKeyboardButton("💸 Get Registered Now", callback_data="package_selector")],
-            [InlineKeyboardButton("🚀 Upgrade To Animo Pro", callback_data="package_selector")],  # upgrade quick button
+            #[InlineKeyboardButton("🚀 Upgrade To Animo Pro", callback_data="package_selector")],  # upgrade quick button
             [InlineKeyboardButton("❓ Help", callback_data="help")],
         ]
         if user and user["payment_status"] == 'registered':
@@ -1488,18 +1488,18 @@ async def show_main_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
             reply_keyboard.append([KeyboardButton(text="Start Earning On Animo", web_app=WebAppInfo(url=f"{WEBAPP_URL}?chat_id={chat_id}"))])
         if update.callback_query:
             await update.callback_query.edit_message_text(text, reply_markup=InlineKeyboardMarkup(keyboard))
-            await context.bot.send_message(
-                chat_id,
-                "Use the buttons below to access Main Menu and Start Earning on Animo too",
-                reply_markup=ReplyKeyboardMarkup(reply_keyboard, resize_keyboard=True)
-            )
+          #  await context.bot.send_message(
+          #     chat_id,
+          #      "Use the buttons below to access Main Menu and Start Earning on Animo too",
+         #       reply_markup=ReplyKeyboardMarkup(reply_keyboard, resize_keyboard=True)
+         #   )
         else:
             await update.message.reply_text(text, reply_markup=InlineKeyboardMarkup(keyboard))
-            await context.bot.send_message(
-                chat_id,
-                "Use the buttons below to access the Menu button or Login to your Animo Account(Available if you're registered):",
-                reply_markup=ReplyKeyboardMarkup(reply_keyboard, resize_keyboard=True)
-            )
+            #await context.bot.send_message(
+            #    chat_id,
+            #    "Use the buttons below to access the Menu button or Login to your Animo Account(Available if you're registered):",
+           #     reply_markup=ReplyKeyboardMarkup(reply_keyboard, resize_keyboard=True)
+           # )
         log_interaction(chat_id, "show_main_menu")
     except psycopg.Error as e:
         logger.error(f"Database error in show_main_menu: {e}")
