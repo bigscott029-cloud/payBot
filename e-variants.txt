@@ -1,0 +1,32 @@
+# Environment Variables for Glamour Telegram PayBot
+# Copy this to a .env file and fill in your values
+
+# Telegram Bot Configuration
+BOT_TOKEN=your_telegram_bot_token_here
+ADMIN_ID=your_telegram_user_id_here
+
+# External Links
+GROUP_LINK=https://t.me/your_group_link
+SITE_LINK=https://your_website.com
+AI_BOOST_LINK=https://your_ai_boost_link
+DAILY_TASK_LINK=https://your_daily_tasks_link
+WEBAPP_URL=https://your_webapp_url.com/app
+
+# Payment Gateway
+FLUTTERWAVE_PAYMENT_LINK=https://flutterwave.com/pay/your_payment_link
+
+# Database Configuration
+DATABASE_URL=postgresql://username:password@host:port/database_name
+
+# Optional: Redis for caching (if you add Redis support later)
+# REDIS_URL=redis://localhost:6379
+
+# Optional: Email service (if you add email notifications later)
+# SMTP_SERVER=smtp.gmail.com
+# SMTP_PORT=587
+# SMTP_USERNAME=your_email@gmail.com
+# SMTP_PASSWORD=your_app_password
+
+# Optional: Webhook secrets (if you add webhook verification)
+# FLUTTERWAVE_SECRET_KEY=your_flutterwave_secret_key
+# TELEGRAM_WEBHOOK_SECRET=your_webhook_secret
