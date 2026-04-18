@@ -5,7 +5,7 @@ import logging
 import os
 import datetime
 from threading import Thread
-from flask import Flask
+from flask import Flask, request
 from telegram import (
     InlineKeyboardButton,
     InlineKeyboardMarkup,
@@ -73,14 +73,25 @@ from error_handlers import error_handler, handle_invalid_command
 # Flask setup for keep-alive
 app = Flask(__name__)
 
+# Global application instance
+application = None
+
 
 @app.route('/')
 def home():
     return "Glamour is alive!"
 
 
+@app.route('/webhook', methods=['POST'])
+def webhook():
+    update = Update.de_json(request.get_json(), application.bot)
+    application.process_update(update)
+    return 'ok'
+
+
 def run_web():
-    app.run(host='0.0.0.0', port=8080)
+    port = int(os.environ.get('PORT', 8080))
+    app.run(host='0.0.0.0', port=port)
 
 
 def keep_alive():
@@ -265,7 +276,7 @@ async def handle_photo(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if payment_method == 'manual' and account == FLUTTERWAVE_PAYMENT_LINK:
         payment_method = 'flutterwave'
 
-    total_amount = 15000 if package == 'X' else 10000
+    total_amount = 14000 if package == 'X' else 20000
     try:
         payment_id = create_payment(
             chat_id=chat_id,
@@ -476,8 +487,8 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     if data == "package_selector":
         buttons = [
-            [InlineKeyboardButton("✈ Glamour Silver Package (₦10,000)", callback_data="reg_standard")],
-            [InlineKeyboardButton("🚀 Glamour Gold Package (₦15,000)", callback_data="reg_x")],
+            [InlineKeyboardButton("✈ Glamour Gold Package (₦14,000)", callback_data="reg_standard")],
+            [InlineKeyboardButton("🚀 Glamour Diamond Package (₦20,000)", callback_data="reg_x")],
             [InlineKeyboardButton("🔙 Main Menu", callback_data="menu")],
         ]
         await query.edit_message_text("Choose your package:", reply_markup=InlineKeyboardMarkup(buttons))
@@ -672,9 +683,9 @@ async def daily_reminder(context: ContextTypes.DEFAULT_TYPE):
 
 
 def main():
-    keep_alive()
     init_database()
 
+    global application
     application = Application.builder().token(BOT_TOKEN).build()
 
     application.add_handler(CommandHandler("start", start))
@@ -701,7 +712,12 @@ def main():
 
     application.job_queue.run_repeating(daily_reminder, interval=86400, first=30)
 
-    application.run_polling()
+    # Set webhook for production
+    webhook_url = f"https://{os.environ.get('RENDER_EXTERNAL_URL', 'your-render-url.onrender.com')}/webhook"
+    application.bot.set_webhook(webhook_url)
+
+    # Start web server
+    keep_alive()
 
 
 if __name__ == "__main__":
