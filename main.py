@@ -713,7 +713,7 @@ def main():
     application.job_queue.run_repeating(daily_reminder, interval=86400, first=30)
 
     # Set webhook for production
-    webhook_url = f"https://{os.environ.get('RENDER_EXTERNAL_URL', 'your-render-url.onrender.com')}/webhook"
+    webhook_url = f"https://{os.environ.get('RENDER_EXTERNAL_URL')}/webhook"
     application.bot.set_webhook(webhook_url)
 
     # Start web server
