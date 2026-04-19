@@ -12,3 +12,4 @@ redis==5.0.1  # For caching layer
 aioredis==2.0.1  # Async Redis support
 APScheduler==3.10.4  # For scheduled tasks
 flask[async]
+waitress==3.0.2
