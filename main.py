@@ -5,6 +5,7 @@ import logging
 import os
 import datetime
 import asyncio
+from asgiref.wsgi import WsgiToAsgi
 from threading import Thread
 from flask import Flask, request
 from telegram import (
@@ -754,3 +755,6 @@ def main():
 
 if __name__ == "__main__":
     main()
+
+
+asgi_app = WsgiToAsgi(app)
