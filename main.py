@@ -4,10 +4,8 @@
 import logging
 import os
 import datetime
-import asyncio
-from asgiref.wsgi import WsgiToAsgi
 from threading import Thread
-from flask import Flask, request
+from flask import Flask
 from telegram import (
     InlineKeyboardButton,
     InlineKeyboardMarkup,
@@ -82,21 +80,6 @@ application = None
 @app.route('/')
 def home():
     return "Glamour is alive!"
-
-
-@app.route('/webhook', methods=['POST'])
-async def webhook():
-    try:
-        data = request.get_json(force=True)
-        if data is None:
-            return 'ok', 200
-
-        update = Update.de_json(data, application.bot)
-        await application.process_update(update)
-        return 'ok', 200
-    except Exception as e:
-        logger.error(f"Webhook processing error: {e}")
-        return 'ok', 200
 
 
 def run_web():
@@ -722,39 +705,12 @@ def main():
 
     application.job_queue.run_repeating(daily_reminder, interval=86400, first=30)
 
-    # ====================== FIXED WEBHOOK SETUP ======================
-    # Get webhook URL from environment (Recommended: set this in Render)
-    webhook_url = os.environ.get('WEBHOOK_URL')
-
-    # Fallback if WEBHOOK_URL is not set
-    if not webhook_url:
-        render_url = os.environ.get('RENDER_EXTERNAL_URL')
-        if render_url:
-            webhook_url = f"{render_url}/webhook"
-
-    if webhook_url:
-        async def setup_webhook():
-            try:
-                await application.bot.delete_webhook(drop_pending_updates=True)
-                await application.bot.set_webhook(
-                    url=webhook_url,
-                    allowed_updates=application.bot.allowed_updates,
-                )
-                logger.info(f"✅ Webhook successfully set to: {webhook_url}")
-            except Exception as e:
-                logger.error(f"❌ Failed to set webhook: {e}")
-
-        asyncio.run(setup_webhook())
-    else:
-        logger.warning("⚠️ No WEBHOOK_URL found. Bot may not receive updates on Render.")
-
-    # ====================== FLASK WEBHOOK ROUTE (Fixed) ======================
     # Start the Flask web server in a background thread (keep-alive)
     keep_alive()
+
+    # Start the bot (polling)
+    application.run_polling()
 
 
 if __name__ == "__main__":
     main()
-
-
-asgi_app = WsgiToAsgi(app)
