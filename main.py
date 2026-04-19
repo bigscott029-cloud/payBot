@@ -4,6 +4,7 @@
 import logging
 import os
 import datetime
+import asyncio
 from threading import Thread
 from flask import Flask
 from telegram import (
@@ -84,11 +85,11 @@ def home():
 
 def run_web():
     port = int(os.environ.get('PORT', 8080))
-    from waitress import serve
-    serve(app, host='0.0.0.0', port=port)
+    app.run(host='0.0.0.0', port=port, debug=False, use_reloader=False)
 
 
 def keep_alive():
+    from threading import Thread
     thread = Thread(target=run_web, daemon=True)
     thread.start()
 
@@ -676,12 +677,11 @@ async def daily_reminder(context: ContextTypes.DEFAULT_TYPE):
         return_conn(conn)
 
 
-def main():
-    init_database()
-
+async def run_bot():
     global application
     application = Application.builder().token(BOT_TOKEN).build()
 
+    # === YOUR HANDLERS (exactly as before) ===
     application.add_handler(CommandHandler("start", start))
     application.add_handler(CommandHandler("menu", show_main_menu))
     application.add_handler(CommandHandler("stats", stats))
@@ -701,20 +701,25 @@ def main():
     application.add_handler(MessageHandler(filters.Document.ALL, handle_document))
     application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_text))
     application.add_handler(MessageHandler(filters.COMMAND, handle_invalid_command))
-
     application.add_error_handler(error_handler)
 
+    # Job queue
     application.job_queue.run_repeating(daily_reminder, interval=86400, first=30)
 
-    # Start keep-alive server in background as Daemon thread (so it doesn't block shutdown)
-    keep_alive()
-
     logger.info("🚀 Starting bot with polling...")
-    application.run_polling(
+
+    await application.initialize()
+    await application.start()
+    await application.updater.start_polling(
         drop_pending_updates=True,
-        allowed_updates=Update.ALL_TYPES,
+        allowed_updates=Update.ALL_TYPES
     )
+    # Keep the bot alive forever
+    await asyncio.Event().wait()
 
 
+# ====================== ENTRY POINT ======================
 if __name__ == "__main__":
-    main()
+    init_database()
+    keep_alive()                    # start the keep-alive first
+    asyncio.run(run_bot())          # ← This is the fix for Python 3.14
