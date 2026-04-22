@@ -602,11 +602,90 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
 
     if data == "how_it_works":
+        keyboard = [
+            [InlineKeyboardButton("💎CLICK TO PROCEED!", callback_data="package_selector")],
+            [InlineKeyboardButton("🔙 Main Menu", callback_data="menu")]
+        ]
         await query.edit_message_text(
-            "GLAMOUR is a digital earning platform that helps you learn, earn, and grow from your smartphone. "
-            "You get paid for daily actions like walking, reading posts, and inviting friends.",
-            reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙 Main Menu", callback_data="menu")]]),
+            "💥 HOW GLAMOUR WORKS 💼🌍\n\n"
+            "GLAMOUR is a digital earning platform that helps you learn, earn, and grow — all from your smartphone. 📱\n"
+            "You get paid for simple daily actions like walking, posting, gaming, and more! 💰\n"
+            "— — —\n\n"
+            "🥇 GOLD PACKAGE – ₦15,000\n"
+            "• 💸 Sponsor Commission: ₦13,000\n"
+            "• 💰 Instant Cashback: ₦13,000\n"
+            "• 💫 1st Level Spill: ₦400\n"
+            "• 🔁 2nd Level Spill: ₦100\n"
+            "• 🏃 Walk-To-Earn: ₦10 per step\n"
+            "• 📰 Article Post: ₦1,000\n"
+            "• 📸 Story Upload: ₦1,500\n"
+            "— — —\n\n"
+            "🥈 SILVER PACKAGE – ₦10,000\n"
+            "• 💸 Sponsor Commission: ₦9,000\n"
+            "• 💰 Instant Cashback: ₦8,500\n"
+            "• 💫 1st Level Spill: ₦200\n"
+            "• 🔁 2nd Level Spill: ₦100\n"
+            "• 🏃 Walk-To-Earn: ₦6 per step\n"
+            "• 📰 Article Post: ₦700\n"
+            "• 📸 Story Upload: ₦1,000\n"
+            "— — —\n\n"
+            "✨ EXTRA WAYS TO EARN\n"
+            "• 🎮 Play Games\n"
+            "• 💼 Offer Digital Gigs\n"
+            "• 📷 Join Photo Contests\n"
+            "• 📚 Publish Books\n"
+            "• 🏙️ Digital Real Estate\n"
+            "— — —\n\n"
+            "🎓 MENTORSHIP COMMUNITY BENEFITS\n"
+            "Once you join, you'll get access to an exclusive mentorship group where you'll learn how to:\n"
+            "• 💰 Earn millions on GLAMOUR\n"
+            "• 🎬 Create viral content\n"
+            "• 📈 Run ads that convert\n"
+            "• 🔓 Unlock premium tools (Canva, Netflix, Gemini & more AI creator tools for free)\n"
+            "— — —\n\n"
+            "🚀 Choose 'Gold' or 'Silver' and get started with your preferred package!\n"
+            "🎓 FOR PROPER GUIDANCE: you will gain access and be added to a mentorship class to learn how to make up to ₦300,000 weekly with the opportunities on Glamour after registration.\n"
+            " Ensure to listen to the Voice Note below to understand more about the features you will benefit from...",
+            reply_markup=InlineKeyboardMarkup(keyboard)
         )
+        
+        # Send voice note
+        voice_keyboard = [
+            [InlineKeyboardButton("✅ I'm done listening...", callback_data="close_voice")]
+        ]
+        voice_markup = InlineKeyboardMarkup(voice_keyboard)
+        try:
+            import os
+            voice_path = os.path.join(os.path.dirname(__file__), "voice.ogg")
+            with open(voice_path, "rb") as voice:
+                await context.bot.send_voice(
+                    chat_id=query.message.chat_id,
+                    voice=voice,
+                    caption="Glamour Explained 🎧",
+                    reply_markup=voice_markup
+                )
+        except FileNotFoundError:
+            logger.error("Voice file 'voice.ogg' not found")
+            await context.bot.send_message(
+                chat_id=query.message.chat_id,
+                text="Error: Voice note file not found. Please contact support.",
+                reply_markup=voice_markup
+            )
+        except Exception as e:
+            logger.error(f"Error sending voice note: {e}")
+            await context.bot.send_message(
+                chat_id=query.message.chat_id,
+                text="An error occurred while sending the voice note. Please try again.",
+                reply_markup=voice_markup
+            )
+        return
+
+    if data == "close_voice":
+        try:
+            await query.message.delete()
+        except Exception as e:
+            logger.error(f"Error deleting voice message: {e}")
+            await query.answer("Message deleted or already removed.")
         return
 
     if data == "daily_tasks":
