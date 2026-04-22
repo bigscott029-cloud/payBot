@@ -484,8 +484,8 @@ async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 
 async def reveal_payment_confirmation_button(context: ContextTypes.DEFAULT_TYPE, chat_id: int, message_id: int, flutterwave_link: str):
-    """After 10 seconds, edit message to reveal 'I have made my Payment' button"""
-    await asyncio.sleep(10)
+    """After 20 seconds, edit message to reveal 'I have made my Payment' button"""
+    await asyncio.sleep(20)
     
     # Create buttons: URL button + confirmation + go back
     buttons = [
@@ -579,10 +579,29 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         state['selected_account'] = 'flutterwave'
         state['expecting'] = 'reg_screenshot'
         
-        # Get flutterwave link from stored package info
+        # Store flutterwave link for later use
         flutterwave_link = state.get('flutterwave_link', 'https://flutterwave.com/pay/exuv4kvor1cn')
         
-        # Initial buttons: Show only "Click Here To Proceed" and "Go Back"
+        # Initial menu: Ask user to confirm they're ready to proceed
+        buttons = [
+            [InlineKeyboardButton("💳 Confirm & Proceed to Payment", callback_data="reg_flutterwave_confirm")],
+            [InlineKeyboardButton("🔙 Go Back", callback_data="reg_bank")],
+        ]
+        
+        payment_msg = f"💰 Complete payment of ₦{state.get('amount_naira', 'N/A')} (€{state.get('amount_euro', 'N/A')}) via Flutterwave.\n\n"
+        payment_msg += "🔗 Click 'Confirm & Proceed' to open the payment portal\n"
+        payment_msg += "💳 You'll complete the payment on Flutterwave\n"
+        payment_msg += "✅ After paying, return here to confirm\n\n"
+        payment_msg += "⏳ A confirmation button will appear after you proceed."
+        
+        await query.edit_message_text(payment_msg, reply_markup=InlineKeyboardMarkup(buttons))
+        return
+
+    if data == "reg_flutterwave_confirm":
+        state = user_state.setdefault(chat_id, {})
+        flutterwave_link = state.get('flutterwave_link', 'https://flutterwave.com/pay/exuv4kvor1cn')
+        
+        # Show payment link - timer starts NOW (only after user confirms)
         buttons = [
             [InlineKeyboardButton("💳 Click Here To Proceed", url=flutterwave_link)],
             [InlineKeyboardButton("🔙 Go Back", callback_data="reg_bank")],
@@ -590,14 +609,13 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         
         payment_msg = f"💰 Complete payment of ₦{state.get('amount_naira', 'N/A')} (€{state.get('amount_euro', 'N/A')}) via Flutterwave.\n\n"
         payment_msg += "🔗 Click the button below to open the payment portal\n"
-        payment_msg += "💳 Complete your payment on the Flutterwave page\n"
-        payment_msg += "✅ Once done, return here and confirm your payment\n\n"
-        payment_msg += "⏳ A confirmation button will appear shortly..."
+        payment_msg += "💳 Complete your payment on the Flutterwave page\n\n"
+        payment_msg += "⏳ After clicking, a confirmation button will appear in 20 seconds..."
         
         sent_msg = await query.edit_message_text(payment_msg, reply_markup=InlineKeyboardMarkup(buttons))
         message_id = sent_msg.message_id
         
-        # Schedule the button reveal for 5 seconds later
+        # Start the 20-second timer ONLY NOW (after user clicked confirm)
         asyncio.create_task(reveal_payment_confirmation_button(context, chat_id, message_id, flutterwave_link))
         return
 
