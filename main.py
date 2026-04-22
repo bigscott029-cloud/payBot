@@ -80,20 +80,9 @@ PACKAGES = {
         'emoji': '💎',
         'price_naira': 14000,
         'price_euro': 7,
-        'original_price_naira': 20000,
         'is_premium': False,
         'flutterwave_link': 'https://flutterwave.com/pay/exuv4kvor1cn',
     },
-    # 'glampremium': {
-    #     'id': 'glampremium',
-    #     'display_name': 'GlamPremium',
-    #     'emoji': '👑',
-    #     'price_naira': 21000,
-    #     'price_euro': 11,
-    #     'original_price_naira': 28000,
-    #     'is_premium': True,
-    #     'flutterwave_link': 'https://flutterwave.com/pay/tgqtlfmkasxg',
-    # }
 }
 
 PREMIUM_FEATURES = {
@@ -303,25 +292,25 @@ async def handle_photo(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
 
     file_id = update.message.photo[-1].file_id
-    package_name = state.get('package_name')
-    payment_method = state.get('payment_method', 'unknown')
-    selected_account = state.get('selected_account', 'Not specified')
-    is_upgrade = state.get('is_upgrade', False)
-    amount_naira = state.get('amount_naira', 0)
+    package = state.get('package')
+    account = state.get('selected_account')
+    payment_method = state.get('payment_method', 'manual')
     
-    if not package_name:
-        await update.message.reply_text("⚠️ No package selected. Please start over with /menu.")
+    if not package or not account:
+        await update.message.reply_text("Please choose a package and payment account before sending your screenshot.")
         return
 
+    total_amount = 14000
+    
     try:
         payment_id = create_payment(
             chat_id=chat_id,
             payment_type='registration',
-            package=package_name,
+            package=package,
             quantity=1,
-            total_amount=amount_naira,
-            payment_account=selected_account if payment_method == 'bank' else 'flutterwave',
-            is_upgrade=is_upgrade,
+            total_amount=total_amount,
+            payment_account=account,
+            is_upgrade=False,
             status='pending_payment',
             method=payment_method,
         )
@@ -330,33 +319,22 @@ async def handle_photo(update: Update, context: ContextTypes.DEFAULT_TYPE):
             ADMIN_ID,
             file_id,
             caption=(
-                f"📌 Payment Screenshot from @{update.effective_user.username or 'Unknown'} "
-                f"(User ID: {chat_id})\n\n"
-                f"💎 Package: {package_name}\n"
-                f"💰 Amount: ₦{amount_naira}\n"
-                f"💳 Payment Method: {payment_method.upper()}\n"
-                f"📍 Account: {selected_account}\n"
-                f"🔄 Is Upgrade: {'Yes' if is_upgrade else 'No'}\n"
-                f"🆔 Payment ID: {payment_id}"
+                f"📌 Registration payment screenshot from @{update.effective_user.username or 'Unknown'} "
+                f"(chat_id: {chat_id})\nPackage: {package}\nAmount: ₦{total_amount}\nPayment ID: {payment_id}"
             ),
             reply_markup=InlineKeyboardMarkup([
-                [InlineKeyboardButton("✅ Approve", callback_data=f"approve_payment_{payment_id}")],
-                [InlineKeyboardButton("❌ Reject", callback_data=f"reject_payment_{payment_id}")],
+                [InlineKeyboardButton("Approve", callback_data=f"approve_payment_{payment_id}")],
+                [InlineKeyboardButton("Reject", callback_data=f"reject_payment_{payment_id}")],
             ]),
         )
-        
         await update.message.reply_text(
-            "✅ Screenshot received! Your payment is being verified by our admin team.\n\n"
-            "You can check your status anytime with /menu or /stats.\n\n"
-            "Thank you for choosing GLAMOUR! 🌟"
+            "Screenshot received! Await admin approval. You can check back later with /stats or /menu."
         )
-        
-        # Clear the screenshot expectation
-        state['expecting'] = None
-        state['payment_id'] = payment_id
+        user_state[chat_id]['expecting'] = None
+        user_state[chat_id]['payment_id'] = payment_id
     except Exception as exc:
         logger.error(f"Error saving payment screenshot: {exc}")
-        await update.message.reply_text("⚠️ Error uploading screenshot. Please try again or contact support.")
+        await update.message.reply_text("An error occurred while uploading the screenshot. Please try again.")
 
 
 async def handle_document(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -536,10 +514,9 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if data == "package_selector":
         buttons = []
         
-        # Display packages with strikethrough pricing
+        # Display packages
         for pkg_id, pkg_data in PACKAGES.items():
-            # Format: emoji name ~~original_price~~ (current_price)
-            display_text = f"{pkg_data['emoji']} {pkg_data['display_name']} ~~₦{pkg_data['original_price_naira']}~~ (₦{pkg_data['price_naira']})"
+            display_text = f"{pkg_data['emoji']} {pkg_data['display_name']} (₦{pkg_data['price_naira']})"
             buttons.append([InlineKeyboardButton(display_text, callback_data=f"reg_{pkg_id}")])
         
         buttons.append([InlineKeyboardButton("🔙 Main Menu", callback_data="menu")])
@@ -562,7 +539,7 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         # Store package info in user_state
         user_state[chat_id] = {
             'package_id': package_id,
-            'package': package,
+            'package': package_id,
             'package_name': package['display_name'],
             'is_upgrade': is_upgrade,
             'flutterwave_link': package['flutterwave_link'],
@@ -597,40 +574,27 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if data == "reg_flutterwave_selection":
         state = user_state.setdefault(chat_id, {})
         state['payment_method'] = 'flutterwave'
-        state['flutterwave_started'] = False
+        state['selected_account'] = 'flutterwave'
+        state['expecting'] = 'reg_screenshot'
         
         # Get flutterwave link from stored package info
         flutterwave_link = state.get('flutterwave_link', 'https://flutterwave.com/pay/exuv4kvor1cn')
         
-        # Initial Flutterwave menu - shows "Click Here To Proceed" and "Go Back"
+        # Show payment link and instruction to upload screenshot
         buttons = [
             [InlineKeyboardButton("💳 Click Here To Proceed With Payment", url=flutterwave_link)],
-            [InlineKeyboardButton("🔙 Go Back", callback_data="package_selector")],
+            [InlineKeyboardButton("🔙 Main Menu", callback_data="menu")],
         ]
         
         payment_msg = f"Complete payment of ₦{state.get('amount_naira', 'N/A')} (€{state.get('amount_euro', 'N/A')}) via Flutterwave.\n\n"
-        payment_msg += "Click the button below to proceed to payment.\n\n"
-        payment_msg += "After completing payment, return here."
+        payment_msg += "1. Click the button below to open Flutterwave\n"
+        payment_msg += "2. Complete your payment\n"
+        payment_msg += "3. Return here and send a screenshot of the confirmation\n\n"
+        payment_msg += "After payment, upload your receipt screenshot."
         
         await query.edit_message_text(payment_msg, reply_markup=InlineKeyboardMarkup(buttons))
         return
 
-    if data == "reg_flutterwave_confirm":
-        state = user_state.setdefault(chat_id, {})
-        state['expecting'] = 'reg_screenshot'
-        state['payment_method'] = 'flutterwave'
-        
-        # After clicking the payment link, show "I Have Made My Payment" button
-        buttons = [
-            [InlineKeyboardButton("✅ I Have Made My Payment", callback_data="reg_screenshot_submit")],
-            [InlineKeyboardButton("🔙 Go Back", callback_data="package_selector")],
-        ]
-        
-        await query.edit_message_text(
-            "Once you've completed payment, click the button below to confirm.",
-            reply_markup=InlineKeyboardMarkup(buttons)
-        )
-        return
 
     if data.startswith("reg_account_"):
         account_name = data[len("reg_account_"):]
@@ -714,24 +678,14 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             [InlineKeyboardButton("🔙 Main Menu", callback_data="menu")]
         ]
         await query.edit_message_text(
-                                                                        "💎 *GLAMFEE & GLAMPREMIUM PACKAGES*\n\n"
-            "🌟 *GLAMFEE PACKAGE*\n"
-            "Investment: ~~₦20,000~~ *₦14,000* (~~€10~~ *€7*) ✨\n"
+            "💎 *GLAMFEE PACKAGE*\n\n"
+            "Investment: *₦14,000* (*€7*) ✨\n"
             "• Instant access to GlamFee earning platform\n"
             "• Direct earning opportunities: €2/hour multiple streams\n"
             "• Network commission: 1st Indirect ₦400, 2nd Indirect ₦100\n"
             "• Daily earning potential: €12+/hour\n"
             "• Fast ROI with consistent daily income\n"
-            "• Access to all 7 GlamLifestyle earning channels\n\n"
-            "👑 *GLAMPREMIUM PACKAGE*\n"
-            "Investment: ~~₦28,000~~ *₦21,000* (~~€14~~ *€10.50*) ✨\n"
-            "• Everything in GlamFee PLUS premium benefits\n"
-            "• Enhanced earning streams with higher rates\n"
-            "• Priority access to exclusive opportunities\n"
-            "• Advanced network commission structure\n"
-            "• VIP support and dedicated account manager\n"
-            "• Bonus GlamLink rewards: ₦12,000 instant earning boost\n"
-            "• Extended earning channels and global partnerships\n\n"
+            "• Access to all earning channels\n\n"
             "💰 *WHY CHOOSE GLAMOUR?*\n"
             "✅ Multiple daily income streams (up to €12+/hour)\n"
             "✅ Quick investment recovery & scaling earnings\n"
@@ -739,9 +693,6 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             "✅ Easy access with network-driven expansion\n"
             "✅ Transparent payment system in EUR & NGN\n"
             "✅ Consistent daily income flow\n\n"
-            "🎯 *WHAT YOU'LL DO:*\n"
-            "🎥 GlamLifestyle • 📜 GlamScript2Cash • ⏱️ GlamRealtime\n"
-            "🌍 GlamLingua • 📞 GlamFaceTime • 💼 GlamWorks • 🌙 GlamDarkMode\n\n"
             "🔥 *Your Soft Life begins with GLAMOUR - Choose Your Package Now!* 🔥",
             parse_mode='Markdown',
             reply_markup=InlineKeyboardMarkup(keyboard)
