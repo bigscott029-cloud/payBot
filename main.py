@@ -484,8 +484,8 @@ async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 
 async def reveal_payment_confirmation_button(context: ContextTypes.DEFAULT_TYPE, chat_id: int, message_id: int, flutterwave_link: str):
-    """After 5 seconds, edit message to reveal 'I have made my Payment' button"""
-    await asyncio.sleep(5)
+    """After 10 seconds, edit message to reveal 'I have made my Payment' button"""
+    await asyncio.sleep(10)
     
     # Create buttons: URL button + confirmation + go back
     buttons = [
