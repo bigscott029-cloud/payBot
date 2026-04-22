@@ -70,8 +70,42 @@ from admin_handlers import (
     admin_help,
 )
 from error_handlers import error_handler, handle_invalid_command
-from packages_config import package_manager, PREMIUM_FEATURES
 
+# ==================== HARDCODED PACKAGE DEFINITIONS ====================
+# Package configurations: GlamFee (basic) and GlamPremium (premium)
+PACKAGES = {
+    'glamfee': {
+        'id': 'glamfee',
+        'display_name': 'GlamFee',
+        'emoji': '💎',
+        'price_naira': 14000,
+        'price_euro': 7,
+        'original_price_naira': 20000,
+        'is_premium': False,
+        'flutterwave_link': 'https://flutterwave.com/pay/exuv4kvor1cn',
+    },
+    'glampremium': {
+        'id': 'glampremium',
+        'display_name': 'GlamPremium',
+        'emoji': '👑',
+        'price_naira': 21000,
+        'price_euro': 11,
+        'original_price_naira': 28000,
+        'is_premium': True,
+        'flutterwave_link': 'https://flutterwave.com/pay/tgqtlfmkasxg',
+    }
+}
+
+PREMIUM_FEATURES = {
+    'priority_support': True,
+    'bonus_earning_rate': 1.5,
+    'exclusive_tasks': True,
+    'vip_group_access': True,
+    'monthly_cash_bonus': 5000,
+    'referral_bonus_multiplier': 2.0,
+    'advanced_analytics': True,
+    'withdrawal_fee_waived': True,
+}
 
 # Flask setup for keep-alive
 app = Flask(__name__)
@@ -134,14 +168,20 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     keyboard = [[InlineKeyboardButton("🚀 Get Started", callback_data="menu")]]
     await update.message.reply_text(
-        "Welcome to Glamour!\n\n"
-        "Social Media is the new Oil Money and Glamour will help you get started mining from it.\n"
-        "Get paid for using your phone and doing what you love most.\n"
-        "• Read posts ➜ earn $2.5/10 words\n"
-        "• Take a Walk ➜ earn $5\n"
-        "• Connect with friends with streaks ➜ earn up to $20\n"
-        "• Invite friends and more!\n\n"
-        "Choose your package and start earning today. Click the button below to continue.",
+        "✨ *Welcome to GLAMOUR!* ✨\n\n"
+        "💡 *The Luxury of Digital Earning*\n"
+        "Your social influence is currency in the modern economy. Glamour transforms your online presence into real wealth.\n\n"
+        "🎯 *How GLAMOUR Works*\n"
+        "• Share your lifestyle - €2/hour\n"
+        "• Engage with content - €2/hour\n"
+        "• Build your network - €2/hour\n"
+        "• Complete tasks - Unlimited earning potential\n"
+        "• Earn through referrals - 2x multiplier\n\n"
+        "💰 *Get Started Today*\n"
+        "Choose your GLAMOUR package and start your luxury earning journey. "
+        "Quick recovery strategy with multiple income streams equals sustainable wealth.\n\n"
+        "🌟 *Join thousands earning globally right now!*",
+        parse_mode='Markdown',
         reply_markup=InlineKeyboardMarkup(keyboard),
     )
 
@@ -263,26 +303,25 @@ async def handle_photo(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
 
     file_id = update.message.photo[-1].file_id
-    package = state.get('package')
-    account = state.get('selected_account')
-    if not package or not account:
-        await update.message.reply_text("Please choose a package and payment account before sending your screenshot.")
+    package_name = state.get('package_name')
+    payment_method = state.get('payment_method', 'unknown')
+    selected_account = state.get('selected_account', 'Not specified')
+    is_upgrade = state.get('is_upgrade', False)
+    amount_naira = state.get('amount_naira', 0)
+    
+    if not package_name:
+        await update.message.reply_text("⚠️ No package selected. Please start over with /menu.")
         return
 
-    payment_method = state.get('payment_method', 'manual')
-    if payment_method == 'manual' and account == FLUTTERWAVE_PAYMENT_LINK:
-        payment_method = 'flutterwave'
-
-    total_amount = 14000 if package == 'X' else 20000
     try:
         payment_id = create_payment(
             chat_id=chat_id,
             payment_type='registration',
-            package=package,
+            package=package_name,
             quantity=1,
-            total_amount=total_amount,
-            payment_account=account,
-            is_upgrade=(package == 'X'),
+            total_amount=amount_naira,
+            payment_account=selected_account if payment_method == 'bank' else 'flutterwave',
+            is_upgrade=is_upgrade,
             status='pending_payment',
             method=payment_method,
         )
@@ -291,22 +330,33 @@ async def handle_photo(update: Update, context: ContextTypes.DEFAULT_TYPE):
             ADMIN_ID,
             file_id,
             caption=(
-                f"📌 Registration payment screenshot from @{update.effective_user.username or 'Unknown'} "
-                f"(chat_id: {chat_id})\nPackage: {package}\nPayment method: {payment_method}\nPayment ID: {payment_id}"
+                f"📌 Payment Screenshot from @{update.effective_user.username or 'Unknown'} "
+                f"(User ID: {chat_id})\n\n"
+                f"💎 Package: {package_name}\n"
+                f"💰 Amount: ₦{amount_naira}\n"
+                f"💳 Payment Method: {payment_method.upper()}\n"
+                f"📍 Account: {selected_account}\n"
+                f"🔄 Is Upgrade: {'Yes' if is_upgrade else 'No'}\n"
+                f"🆔 Payment ID: {payment_id}"
             ),
             reply_markup=InlineKeyboardMarkup([
-                [InlineKeyboardButton("Approve", callback_data=f"approve_payment_{payment_id}")],
-                [InlineKeyboardButton("Reject", callback_data=f"reject_payment_{payment_id}")],
+                [InlineKeyboardButton("✅ Approve", callback_data=f"approve_payment_{payment_id}")],
+                [InlineKeyboardButton("❌ Reject", callback_data=f"reject_payment_{payment_id}")],
             ]),
         )
+        
         await update.message.reply_text(
-            "Screenshot received! Await admin approval. You can check back later with /stats or /menu."
+            "✅ Screenshot received! Your payment is being verified by our admin team.\n\n"
+            "You can check your status anytime with /menu or /stats.\n\n"
+            "Thank you for choosing GLAMOUR! 🌟"
         )
-        user_state[chat_id]['expecting'] = None
-        user_state[chat_id]['payment_id'] = payment_id
+        
+        # Clear the screenshot expectation
+        state['expecting'] = None
+        state['payment_id'] = payment_id
     except Exception as exc:
         logger.error(f"Error saving payment screenshot: {exc}")
-        await update.message.reply_text("An error occurred while uploading the screenshot. Please try again.")
+        await update.message.reply_text("⚠️ Error uploading screenshot. Please try again or contact support.")
 
 
 async def handle_document(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -351,30 +401,7 @@ async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
             return_conn(conn)
         return
 
-    # Handle discount price setting
-    state = user_state.get(chat_id, {})
-    if state.get('discount_state') == 'asking_prices' and chat_id == ADMIN_ID:
-        try:
-            # Parse format: glamfee:20000,glampremium:50000
-            price_pairs = text.split(',')
-            price_dict = {}
-            for pair in price_pairs:
-                pkg_id, price = pair.strip().split(':')
-                price_dict[pkg_id.strip()] = int(price.strip())
-            
-            if package_manager.set_discount(price_dict):
-                await update.message.reply_text(
-                    f"✅ Discount enabled with original prices:\n"
-                    f"{chr(10).join([f'{pkg_id}: ₦{price}' for pkg_id, price in price_dict.items()])}"
-                )
-            else:
-                await update.message.reply_text("❌ Failed to set discount.")
-        except Exception as e:
-            await update.message.reply_text(f"❌ Invalid format! Use: glamfee:20000,glampremium:50000\nError: {e}")
-        finally:
-            state.pop('discount_state', None)
-        return
-
+    # Handle admin text commands
     state = user_state.get(chat_id, {})
     if state.get('expecting') == 'support_message':
         await context.bot.send_message(ADMIN_ID, f"Support request from @{update.effective_user.username or 'Unknown'} ({chat_id}): {text}")
@@ -507,16 +534,12 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
 
     if data == "package_selector":
-        available_packages = package_manager.get_available_packages(for_new_user=True)
         buttons = []
         
-        for pkg_id, pkg_data in available_packages.items():
-            display_price = pkg_data['price']
-            if package_manager.discount_enabled and 'original_price' in pkg_data:
-                original = pkg_data['original_price']
-                display_text = f"{pkg_data['emoji']} {pkg_data['display_name']} (₦{original} ~~₦{display_price}~~)"
-            else:
-                display_text = f"{pkg_data['emoji']} {pkg_data['display_name']} (₦{display_price})"
+        # Display both packages with strikethrough pricing
+        for pkg_id, pkg_data in PACKAGES.items():
+            # Format: ~~original~~ current_price
+            display_text = f"{pkg_data['emoji']} {pkg_data['display_name']} (~~₦{pkg_data['original_price_naira']}~~ → ₦{pkg_data['price_naira']})"
             buttons.append([InlineKeyboardButton(display_text, callback_data=f"reg_{pkg_id}")])
         
         buttons.append([InlineKeyboardButton("🔙 Main Menu", callback_data="menu")])
@@ -525,46 +548,86 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     if data.startswith("reg_"):
         package_id = data[4:]  # Remove "reg_" prefix
-        package = package_manager.get_package(package_id)
         
-        if not package:
-            await query.edit_message_text("Invalid package selected. Please try again.")
+        # Get package from hardcoded PACKAGES dictionary
+        if package_id not in PACKAGES:
+            await query.edit_message_text("Invalid package selected. Please try again.", 
+                reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙 Main Menu", callback_data="menu")]]))
             return
+        
+        package = PACKAGES[package_id]
+        is_upgrade = user and user.get("payment_status") == 'registered'
+        
+        # Store package info in user_state
         user_state[chat_id] = {
-            'expecting': 'reg_method',
+            'package_id': package_id,
             'package': package,
-            'selected_account': None,
-            'payment_method': None,
+            'package_name': package['display_name'],
+            'is_upgrade': is_upgrade,
+            'flutterwave_link': package['flutterwave_link'],
+            'amount_naira': package['price_naira'],
+            'amount_euro': package['price_euro'],
         }
+        
+        # Show payment method selection: only two options (removed "I paid with Flutterwave")
         buttons = [
-            [InlineKeyboardButton("Pay with Flutterwave", url=FLUTTERWAVE_PAYMENT_LINK)],
-            [InlineKeyboardButton("I paid with Flutterwave", callback_data="reg_flutterwave")],
-            [InlineKeyboardButton("Pay with bank account", callback_data="reg_bank")],
+            [InlineKeyboardButton("Pay with Flutterwave", callback_data="reg_flutterwave_selection")],
+            [InlineKeyboardButton("Pay with Bank Account", callback_data="reg_bank")],
             [InlineKeyboardButton("🔙 Main Menu", callback_data="menu")],
         ]
-        await query.edit_message_text(
-            "Choose how you want to pay for your package:",
-            reply_markup=InlineKeyboardMarkup(buttons),
-        )
+        
+        payment_text = f"You selected: {package['emoji']} {package['display_name']}\n"
+        payment_text += f"Price: ₦{package['price_naira']} (€{package['price_euro']})\n\n"
+        payment_text += "Choose your payment method:"
+        
+        await query.edit_message_text(payment_text, reply_markup=InlineKeyboardMarkup(buttons))
         return
 
     if data == "reg_bank":
         state = user_state.setdefault(chat_id, {})
         state['expecting'] = 'reg_screenshot'
+        state['payment_method'] = 'bank'
         buttons = [[InlineKeyboardButton(name, callback_data=f"reg_account_{name}")] for name in PAYMENT_ACCOUNTS.keys()]
         buttons.append([InlineKeyboardButton("Other country option", callback_data="reg_other")])
         buttons.append([InlineKeyboardButton("🔙 Main Menu", callback_data="menu")])
-        await query.edit_message_text("Select an account to pay to:", reply_markup=InlineKeyboardMarkup(buttons))
+        await query.edit_message_text("Select a bank account to pay to:", reply_markup=InlineKeyboardMarkup(buttons))
         return
 
-    if data == "reg_flutterwave":
+    if data == "reg_flutterwave_selection":
+        state = user_state.setdefault(chat_id, {})
+        state['payment_method'] = 'flutterwave'
+        state['flutterwave_started'] = False
+        
+        # Get flutterwave link from stored package info
+        flutterwave_link = state.get('flutterwave_link', 'https://flutterwave.com/pay/exuv4kvor1cn')
+        
+        # Initial Flutterwave menu - shows "Click Here To Proceed" and "Go Back"
+        buttons = [
+            [InlineKeyboardButton("💳 Click Here To Proceed With Payment", url=flutterwave_link)],
+            [InlineKeyboardButton("🔙 Go Back", callback_data="package_selector")],
+        ]
+        
+        payment_msg = f"Complete payment of ₦{state.get('amount_naira', 'N/A')} (€{state.get('amount_euro', 'N/A')}) via Flutterwave.\n\n"
+        payment_msg += "Click the button below to proceed to payment.\n\n"
+        payment_msg += "After completing payment, return here."
+        
+        await query.edit_message_text(payment_msg, reply_markup=InlineKeyboardMarkup(buttons))
+        return
+
+    if data == "reg_flutterwave_confirm":
         state = user_state.setdefault(chat_id, {})
         state['expecting'] = 'reg_screenshot'
         state['payment_method'] = 'flutterwave'
-        state['selected_account'] = FLUTTERWAVE_PAYMENT_LINK
+        
+        # After clicking the payment link, show "I Have Made My Payment" button
+        buttons = [
+            [InlineKeyboardButton("✅ I Have Made My Payment", callback_data="reg_screenshot_submit")],
+            [InlineKeyboardButton("🔙 Go Back", callback_data="package_selector")],
+        ]
+        
         await query.edit_message_text(
-            f"Please complete your payment via Flutterwave and then send a screenshot of the successful payment receipt.\n\nPay here: {FLUTTERWAVE_PAYMENT_LINK}",
-            reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙 Main Menu", callback_data="menu")]]),
+            "Once you've completed payment, click the button below to confirm.",
+            reply_markup=InlineKeyboardMarkup(buttons)
         )
         return
 
@@ -576,11 +639,15 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             return
         state = user_state.setdefault(chat_id, {})
         state['selected_account'] = account_name
-        state['payment_method'] = 'manual'
+        state['selected_account_details'] = payment_details
+        state['payment_method'] = 'bank'
         state['expecting'] = 'reg_screenshot'
-        state['package'] = state.get('package', 'Standard')
+        
         await query.edit_message_text(
-            f"Payment details:\n\n{payment_details}\n\nPlease pay and send your payment screenshot.",
+            f"📋 *Payment Details*\n\n{payment_details}\n\n"
+            f"💎 Amount: ₦{state.get('amount_naira', 'N/A')}\n\n"
+            "Please send a screenshot of your payment proof after transferring.",
+            parse_mode='Markdown',
             reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙 Main Menu", callback_data="menu")]]),
         )
         return
@@ -646,29 +713,35 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             [InlineKeyboardButton("🔙 Main Menu", callback_data="menu")]
         ]
         await query.edit_message_text(
-            "� *GLAMOUR EARNING STRUCTURE*\n\n"
-            "💎 START YOUR GLAM JOURNEY\n"
-            "• *Glam Fee*: ₦14,000 (€7)\n"
-            "• *Glam Link Bonus*: ₦12,000 (€6) (instant earning boost)\n"
-            "• *Glam Reward*: ₦10,000 (€5)\n"
-            "• *1st Indirect*: ₦400\n"
-            "• *2nd Indirect*: ₦100\n\n"
-            "💡 Quick Recovery: Your initial investment returns fast then your earnings scale steadily.\n\n"
-            "💸 *DAILY EARNING STREAMS*\n"
-            "• 🎥 *GlamLifestyle*: €2/hour\n"
-            "• 📜 *GlamScript2Cash*: €2/script\n"
-            "• ⏱️ *GlamRealtime*: €2/hour\n"
-            "• 🌍 *GlamLingua*: €2/hour\n"
-            "• 📞 *GlamFaceTime*: €2/hour\n"
-            "• 💼 *GlamWorks*: €2/hour\n"
-            "• 🌙 *GlamDarkMode*: €2/hour\n\n"
-            "💎 *Total Potential: €12/hour*\n\n"
-            "🌐 With Glamour's Global Earning Potential, You Get:\n"
-            "• Multiple income channels\n"
-            "• Network-driven earning expansion\n"
-            "• Easy Earning Access and Global Partnerships\n"
-            "• Consistent daily income flow\n\n"
-            "🔥 *Your Soft Life begins with GLAMOUR* 🔥",
+                                                                        "💎 *GLAMFEE & GLAMPREMIUM PACKAGES*\n\n"
+            "🌟 *GLAMFEE PACKAGE*\n"
+            "Investment: ~~₦20,000~~ *₦14,000* (~~€10~~ *€7*) ✨\n"
+            "• Instant access to GlamFee earning platform\n"
+            "• Direct earning opportunities: €2/hour multiple streams\n"
+            "• Network commission: 1st Indirect ₦400, 2nd Indirect ₦100\n"
+            "• Daily earning potential: €12+/hour\n"
+            "• Fast ROI with consistent daily income\n"
+            "• Access to all 7 GlamLifestyle earning channels\n\n"
+            "👑 *GLAMPREMIUM PACKAGE*\n"
+            "Investment: ~~₦28,000~~ *₦21,000* (~~€14~~ *€10.50*) ✨\n"
+            "• Everything in GlamFee PLUS premium benefits\n"
+            "• Enhanced earning streams with higher rates\n"
+            "• Priority access to exclusive opportunities\n"
+            "• Advanced network commission structure\n"
+            "• VIP support and dedicated account manager\n"
+            "• Bonus GlamLink rewards: ₦12,000 instant earning boost\n"
+            "• Extended earning channels and global partnerships\n\n"
+            "💰 *WHY CHOOSE GLAMOUR?*\n"
+            "✅ Multiple daily income streams (up to €12+/hour)\n"
+            "✅ Quick investment recovery & scaling earnings\n"
+            "✅ Global earning potential with flexible work hours\n"
+            "✅ Easy access with network-driven expansion\n"
+            "✅ Transparent payment system in EUR & NGN\n"
+            "✅ Consistent daily income flow\n\n"
+            "🎯 *WHAT YOU'LL DO:*\n"
+            "🎥 GlamLifestyle • 📜 GlamScript2Cash • ⏱️ GlamRealtime\n"
+            "🌍 GlamLingua • 📞 GlamFaceTime • 💼 GlamWorks • 🌙 GlamDarkMode\n\n"
+            "🔥 *Your Soft Life begins with GLAMOUR - Choose Your Package Now!* 🔥",
             parse_mode='Markdown',
             reply_markup=InlineKeyboardMarkup(keyboard)
         )
@@ -780,194 +853,7 @@ async def daily_reminder(context: ContextTypes.DEFAULT_TYPE):
         return_conn(conn)
 
 
-# ==================== ADMIN PACKAGE MANAGEMENT COMMANDS ====================
-
-async def admin_activate_premium(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Admin command to activate premium package availability"""
-    chat_id = update.effective_user.id
-    if chat_id != ADMIN_ID:
-        await update.message.reply_text("❌ This command is admin only.")
-        return
-    
-    if not context.args:
-        await update.message.reply_text(
-            "Usage: /activate_premium <new_users: yes/no>\n"
-            "Example: /activate_premium yes"
-        )
-        return
-    
-    available_for_new = context.args[0].lower() == 'yes'
-    if package_manager.activate_premium(available_for_new_users=available_for_new):
-        status = "for all users" if available_for_new else "for registered users only"
-        await update.message.reply_text(f"✅ Premium package activated {status}!")
-    else:
-        await update.message.reply_text("❌ Failed to activate premium package.")
-
-
-async def admin_deactivate_premium(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Admin command to deactivate premium package"""
-    chat_id = update.effective_user.id
-    if chat_id != ADMIN_ID:
-        await update.message.reply_text("❌ This command is admin only.")
-        return
-    
-    if package_manager.deactivate_premium():
-        await update.message.reply_text("✅ Premium package deactivated. Only GlamFee is available.")
-    else:
-        await update.message.reply_text("❌ Failed to deactivate premium package.")
-
-
-async def admin_set_discount(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Admin command to set discount"""
-    chat_id = update.effective_user.id
-    if chat_id != ADMIN_ID:
-        await update.message.reply_text("❌ This command is admin only.")
-        return
-    
-    user_state[chat_id] = {'discount_state': 'asking_prices', 'price_data': {}}
-    packages = package_manager.list_all_packages()
-    
-    text = "Enter original prices for each package (will be shown struck-through):\n\n"
-    for pkg_id, pkg_data in packages.items():
-        text += f"{pkg_data['display_name']}: (current: ₦{pkg_data['price']})\n"
-    
-    text += "\nReply in format: glamfee:20000,glampremium:50000"
-    await update.message.reply_text(text)
-
-
-async def admin_remove_discount(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Admin command to remove discount"""
-    chat_id = update.effective_user.id
-    if chat_id != ADMIN_ID:
-        await update.message.reply_text("❌ This command is admin only.")
-        return
-    
-    if package_manager.remove_discount():
-        await update.message.reply_text("✅ Discount removed. All packages now show without struck-through prices.")
-    else:
-        await update.message.reply_text("❌ Failed to remove discount.")
-
-
-async def admin_list_packages(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Admin command to list all packages"""
-    chat_id = update.effective_user.id
-    if chat_id != ADMIN_ID:
-        await update.message.reply_text("❌ This command is admin only.")
-        return
-    
-    packages = package_manager.list_all_packages()
-    text = "📦 *Available Packages*:\n\n"
-    
-    for pkg_id, pkg_data in packages.items():
-        text += f"*{pkg_data['display_name']}* ({pkg_id})\n"
-        text += f"  Price: ₦{pkg_data['price']} (€{pkg_data['currency_euro']})\n"
-        text += f"  Original: ₦{pkg_data.get('original_price', pkg_data['price'])}\n"
-        text += f"  Premium: {'Yes' if pkg_data.get('is_premium') else 'No'}\n"
-        text += f"  New Users: {'✅' if pkg_data.get('is_available_for_new_users') else '❌'}\n"
-        text += f"  Registered: {'✅' if pkg_data.get('is_available_for_registered_users') else '❌'}\n\n"
-    
-    text += f"\n💱 Discount Status: {'🔴 Enabled' if package_manager.discount_enabled else '🟢 Disabled'}"
-    text += f"\n👑 Premium Status: {'🔴 Enabled' if package_manager.premium_enabled else '🟢 Disabled'}"
-    
-    await update.message.reply_text(text, parse_mode='Markdown')
-
-
-async def admin_rename_package(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Admin command to rename a package"""
-    chat_id = update.effective_user.id
-    if chat_id != ADMIN_ID:
-        await update.message.reply_text("❌ This command is admin only.")
-        return
-    
-    if len(context.args) < 3:
-        await update.message.reply_text(
-            "Usage: /rename_package <package_id> <new_name> <display_name>\n"
-            "Example: /rename_package glamfee GlamFee 'GlamFee Basic'"
-        )
-        return
-    
-    pkg_id = context.args[0]
-    new_name = context.args[1]
-    display_name = ' '.join(context.args[2:])
-    
-    if package_manager.rename_package(pkg_id, new_name, display_name):
-        await update.message.reply_text(f"✅ Package renamed to '{display_name}'")
-    else:
-        await update.message.reply_text(f"❌ Package '{pkg_id}' not found.")
-
-
-async def admin_set_package_price(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Admin command to set package price"""
-    chat_id = update.effective_user.id
-    if chat_id != ADMIN_ID:
-        await update.message.reply_text("❌ This command is admin only.")
-        return
-    
-    if len(context.args) < 3:
-        await update.message.reply_text(
-            "Usage: /set_price <package_id> <price_naira> <price_euro>\n"
-            "Example: /set_price glamfee 14000 7"
-        )
-        return
-    
-    pkg_id = context.args[0]
-    try:
-        price_naira = int(context.args[1])
-        price_euro = float(context.args[2])
-    except ValueError:
-        await update.message.reply_text("❌ Prices must be numbers!")
-        return
-    
-    if package_manager.set_package_price(pkg_id, price_naira, price_euro):
-        await update.message.reply_text(f"✅ Price updated: ₦{price_naira} (€{price_euro})")
-    else:
-        await update.message.reply_text(f"❌ Package '{pkg_id}' not found.")
-
-
-async def admin_commandlist(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Admin command to list all available admin commands"""
-    chat_id = update.effective_user.id
-    if chat_id != ADMIN_ID:
-        await update.message.reply_text("❌ This command is admin only.")
-        return
-    
-    commands_text = """
-🔧 *ADMIN COMMANDS FOR GLAMOUR BOT*
-
-📦 *PACKAGE MANAGEMENT*
-/activate_premium <yes/no> - Activate premium package (yes=for new users, no=registered only)
-/deactivate_premium - Disable premium package
-/list_packages - Show all available packages with details
-/rename_package <id> <name> <display> - Rename a package
-/set_price <id> <naira> <euro> - Set package price
-
-💰 *DISCOUNT MANAGEMENT*
-/set_discount - Enable discount (prompts for original prices)
-/remove_discount - Disable discount
-
-📊 *ANALYTICS & MANAGEMENT*
-/analytics - View platform analytics
-/stats_package - Stats by package type
-/payment_approve - Manual payment approval
-/approve_payment - Approve pending payment
-/reject_payment - Reject pending payment
-/payments_pending - List pending payments
-/broadcast - Send message to all users
-/add_task - Add earning task
-/admin_help - Admin help menu
-/commandlist - This command (show all commands)
-
-🎯 *FEATURES*
-• Discount: Shows original price struck-through when enabled
-• Premium: Basic (GlamFee) vs Premium (GlamPremium) packages
-• Price Display: Automatic conversion Naira ↔ Euro
-• User-Targeted: Show packages based on user type (new/registered)
-"""
-    
-    await update.message.reply_text(commands_text, parse_mode='Markdown')
-
-
-async def run_bot():
+# ==================== BOT INITIALIZATION AND RUN ====================
 
     global application
     application = Application.builder().token(BOT_TOKEN).build()
@@ -986,16 +872,6 @@ async def run_bot():
     application.add_handler(CommandHandler("reject_payment", admin_reject_payment))
     application.add_handler(CommandHandler("payments_pending", admin_pending_payments))
     application.add_handler(CommandHandler("admin_help", admin_help))
-    
-    # Package management commands
-    application.add_handler(CommandHandler("activate_premium", admin_activate_premium))
-    application.add_handler(CommandHandler("deactivate_premium", admin_deactivate_premium))
-    application.add_handler(CommandHandler("set_discount", admin_set_discount))
-    application.add_handler(CommandHandler("remove_discount", admin_remove_discount))
-    application.add_handler(CommandHandler("list_packages", admin_list_packages))
-    application.add_handler(CommandHandler("rename_package", admin_rename_package))
-    application.add_handler(CommandHandler("set_price", admin_set_package_price))
-    application.add_handler(CommandHandler("commandlist", admin_commandlist))
 
     application.add_handler(CallbackQueryHandler(button_handler))
     application.add_handler(MessageHandler(filters.PHOTO, handle_photo))
