@@ -540,6 +540,72 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await query.edit_message_text("💎 Choose your package:", reply_markup=InlineKeyboardMarkup(buttons))
         return
 
+    # === SPECIFIC PAYMENT METHOD CALLBACKS (must check BEFORE generic "reg_" check) ===
+
+    if data == "reg_bank":
+        state = user_state.setdefault(chat_id, {})
+        state['expecting'] = 'reg_screenshot'
+        state['payment_method'] = 'bank'
+        buttons = [[InlineKeyboardButton(name, callback_data=f"reg_account_{name}")] for name in PAYMENT_ACCOUNTS.keys()]
+        buttons.append([InlineKeyboardButton("Other country option", callback_data="reg_other")])
+        buttons.append([InlineKeyboardButton("🔙 Main Menu", callback_data="menu")])
+        await query.edit_message_text("Select a bank account to pay to:", reply_markup=InlineKeyboardMarkup(buttons))
+        return
+
+    if data == "reg_flutterwave_selection":
+        state = user_state.setdefault(chat_id, {})
+        state['payment_method'] = 'flutterwave'
+        state['selected_account'] = 'flutterwave'
+        state['expecting'] = 'reg_screenshot'
+        
+        # Get flutterwave link from stored package info
+        flutterwave_link = state.get('flutterwave_link', 'https://flutterwave.com/pay/exuv4kvor1cn')
+        
+        # Show payment link and instruction to upload screenshot
+        buttons = [
+            [InlineKeyboardButton("💳 Click Here To Proceed With Payment", url=flutterwave_link)],
+            [InlineKeyboardButton("🔙 Main Menu", callback_data="menu")],
+        ]
+        
+        payment_msg = f"Complete payment of ₦{state.get('amount_naira', 'N/A')} (€{state.get('amount_euro', 'N/A')}) via Flutterwave.\n\n"
+        payment_msg += "1. Click the button below to open Flutterwave\n"
+        payment_msg += "2. Complete your payment\n"
+        payment_msg += "3. Return here and send a screenshot of the confirmation\n\n"
+        payment_msg += "After payment, upload your receipt screenshot."
+        
+        await query.edit_message_text(payment_msg, reply_markup=InlineKeyboardMarkup(buttons))
+        return
+
+    if data.startswith("reg_account_"):
+        account_name = data[len("reg_account_"):]
+        payment_details = PAYMENT_ACCOUNTS.get(account_name)
+        if not payment_details:
+            await query.edit_message_text("Invalid payment account selected. Please try again.")
+            return
+        state = user_state.setdefault(chat_id, {})
+        state['selected_account'] = account_name
+        state['selected_account_details'] = payment_details
+        state['payment_method'] = 'bank'
+        state['expecting'] = 'reg_screenshot'
+        
+        await query.edit_message_text(
+            f"📋 *Payment Details*\n\n{payment_details}\n\n"
+            f"💎 Amount: ₦{state.get('amount_naira', 'N/A')}\n\n"
+            "Please send a screenshot of your payment proof after transferring.",
+            parse_mode='Markdown',
+            reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙 Main Menu", callback_data="menu")]]),
+        )
+        return
+
+    if data == "reg_other":
+        await query.edit_message_text(
+            "Please contact @bigscottmedia to complete your payment for other regions.",
+            reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙 Main Menu", callback_data="menu")]]),
+        )
+        return
+
+    # === GENERIC PACKAGE SELECTION (must be AFTER specific payment method checks) ===
+
     if data.startswith("reg_"):
         package_id = data[4:]  # Remove "reg_" prefix
         
@@ -587,69 +653,6 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         payment_text += "Choose your payment method:"
         
         await query.edit_message_text(payment_text, reply_markup=InlineKeyboardMarkup(buttons))
-        return
-
-    if data == "reg_bank":
-        state = user_state.setdefault(chat_id, {})
-        state['expecting'] = 'reg_screenshot'
-        state['payment_method'] = 'bank'
-        buttons = [[InlineKeyboardButton(name, callback_data=f"reg_account_{name}")] for name in PAYMENT_ACCOUNTS.keys()]
-        buttons.append([InlineKeyboardButton("Other country option", callback_data="reg_other")])
-        buttons.append([InlineKeyboardButton("🔙 Main Menu", callback_data="menu")])
-        await query.edit_message_text("Select a bank account to pay to:", reply_markup=InlineKeyboardMarkup(buttons))
-        return
-
-    if data == "reg_flutterwave_selection":
-        state = user_state.setdefault(chat_id, {})
-        state['payment_method'] = 'flutterwave'
-        state['selected_account'] = 'flutterwave'
-        state['expecting'] = 'reg_screenshot'
-        
-        # Get flutterwave link from stored package info
-        flutterwave_link = state.get('flutterwave_link', 'https://flutterwave.com/pay/exuv4kvor1cn')
-        
-        # Show payment link and instruction to upload screenshot
-        buttons = [
-            [InlineKeyboardButton("💳 Click Here To Proceed With Payment", url=flutterwave_link)],
-            [InlineKeyboardButton("🔙 Main Menu", callback_data="menu")],
-        ]
-        
-        payment_msg = f"Complete payment of ₦{state.get('amount_naira', 'N/A')} (€{state.get('amount_euro', 'N/A')}) via Flutterwave.\n\n"
-        payment_msg += "1. Click the button below to open Flutterwave\n"
-        payment_msg += "2. Complete your payment\n"
-        payment_msg += "3. Return here and send a screenshot of the confirmation\n\n"
-        payment_msg += "After payment, upload your receipt screenshot."
-        
-        await query.edit_message_text(payment_msg, reply_markup=InlineKeyboardMarkup(buttons))
-        return
-
-
-    if data.startswith("reg_account_"):
-        account_name = data[len("reg_account_"):]
-        payment_details = PAYMENT_ACCOUNTS.get(account_name)
-        if not payment_details:
-            await query.edit_message_text("Invalid payment account selected. Please try again.")
-            return
-        state = user_state.setdefault(chat_id, {})
-        state['selected_account'] = account_name
-        state['selected_account_details'] = payment_details
-        state['payment_method'] = 'bank'
-        state['expecting'] = 'reg_screenshot'
-        
-        await query.edit_message_text(
-            f"📋 *Payment Details*\n\n{payment_details}\n\n"
-            f"💎 Amount: ₦{state.get('amount_naira', 'N/A')}\n\n"
-            "Please send a screenshot of your payment proof after transferring.",
-            parse_mode='Markdown',
-            reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙 Main Menu", callback_data="menu")]]),
-        )
-        return
-
-    if data == "reg_other":
-        await query.edit_message_text(
-            "Please contact @bigscottmedia to complete your payment for other regions.",
-            reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙 Main Menu", callback_data="menu")]]),
-        )
         return
 
     if data.startswith("approve_payment_") or data.startswith("reject_payment_"):
