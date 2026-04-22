@@ -855,6 +855,7 @@ async def daily_reminder(context: ContextTypes.DEFAULT_TYPE):
 
 # ==================== BOT INITIALIZATION AND RUN ====================
 
+async def run_bot():
     global application
     application = Application.builder().token(BOT_TOKEN).build()
 
