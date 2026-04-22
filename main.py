@@ -84,16 +84,16 @@ PACKAGES = {
         'is_premium': False,
         'flutterwave_link': 'https://flutterwave.com/pay/exuv4kvor1cn',
     },
-    'glampremium': {
-        'id': 'glampremium',
-        'display_name': 'GlamPremium',
-        'emoji': '👑',
-        'price_naira': 21000,
-        'price_euro': 11,
-        'original_price_naira': 28000,
-        'is_premium': True,
-        'flutterwave_link': 'https://flutterwave.com/pay/tgqtlfmkasxg',
-    }
+    # 'glampremium': {
+    #     'id': 'glampremium',
+    #     'display_name': 'GlamPremium',
+    #     'emoji': '👑',
+    #     'price_naira': 21000,
+    #     'price_euro': 11,
+    #     'original_price_naira': 28000,
+    #     'is_premium': True,
+    #     'flutterwave_link': 'https://flutterwave.com/pay/tgqtlfmkasxg',
+    # }
 }
 
 PREMIUM_FEATURES = {
@@ -536,10 +536,10 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if data == "package_selector":
         buttons = []
         
-        # Display both packages with strikethrough pricing
+        # Display packages with strikethrough pricing
         for pkg_id, pkg_data in PACKAGES.items():
-            # Format: ~~original~~ current_price
-            display_text = f"{pkg_data['emoji']} {pkg_data['display_name']} (~~₦{pkg_data['original_price_naira']}~~ → ₦{pkg_data['price_naira']})"
+            # Format: emoji name ~~original_price~~ (current_price)
+            display_text = f"{pkg_data['emoji']} {pkg_data['display_name']} ~~₦{pkg_data['original_price_naira']}~~ (₦{pkg_data['price_naira']})"
             buttons.append([InlineKeyboardButton(display_text, callback_data=f"reg_{pkg_id}")])
         
         buttons.append([InlineKeyboardButton("🔙 Main Menu", callback_data="menu")])
@@ -556,6 +556,7 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             return
         
         package = PACKAGES[package_id]
+        user = get_user(chat_id)
         is_upgrade = user and user.get("payment_status") == 'registered'
         
         # Store package info in user_state
