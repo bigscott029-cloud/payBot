@@ -13,7 +13,14 @@ SITE_LINK = os.getenv("SITE_LINK", "")
 AI_BOOST_LINK = os.getenv("AI_BOOST_LINK", "")
 DAILY_TASK_LINK = os.getenv("DAILY_TASK_LINK", "")
 WEBAPP_URL = os.getenv("WEBAPP_URL", "https://Glamour.onrender.com/app")
-FLUTTERWAVE_PAYMENT_LINK = os.getenv("FLUTTERWAVE_PAYMENT_LINK", "https://flutterwave.com/pay/elideckker0c")
+
+# Flutterwave Payment Links (different for each payment type)
+FLUTTERWAVE_BASIC_NEW_USER = os.getenv("FLUTTERWAVE_BASIC_NEW_USER", "https://flutterwave.com/pay/elideckker0c")
+FLUTTERWAVE_PREMIUM_NEW_USER = os.getenv("FLUTTERWAVE_PREMIUM_NEW_USER", "https://flutterwave.com/pay/exuv4kvor1cn")
+FLUTTERWAVE_UPGRADE = os.getenv("FLUTTERWAVE_UPGRADE", "https://flutterwave.com/pay/tgqtlfmkasxg")
+
+# Deprecated: kept for backward compatibility
+FLUTTERWAVE_PAYMENT_LINK = os.getenv("FLUTTERWAVE_PAYMENT_LINK", FLUTTERWAVE_BASIC_NEW_USER)
 
 # Database Configuration
 DATABASE_URL = os.getenv("DATABASE_URL")

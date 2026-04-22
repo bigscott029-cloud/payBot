@@ -36,7 +36,9 @@ from config import (
     DAILY_TASK_LINK,
     SITE_LINK,
     AI_BOOST_LINK,
-    FLUTTERWAVE_PAYMENT_LINK,
+    FLUTTERWAVE_BASIC_NEW_USER,
+    FLUTTERWAVE_PREMIUM_NEW_USER,
+    FLUTTERWAVE_UPGRADE,
 )
 from db import (
     init_database,
@@ -81,7 +83,18 @@ PACKAGES = {
         'price_naira': 14000,
         'price_euro': 7,
         'is_premium': False,
-        'flutterwave_link': 'https://flutterwave.com/pay/exuv4kvor1cn',
+        'is_active': True,  # Always available
+        'flutterwave_link': FLUTTERWAVE_BASIC_NEW_USER,
+    },
+    'glampremium': {
+        'id': 'glampremium',
+        'display_name': 'GlamPremium',
+        'emoji': '👑',
+        'price_naira': 35000,
+        'price_euro': 18,
+        'is_premium': True,
+        'is_active': False,  # Deactivated by default - activate with /activate_premium
+        'flutterwave_link': FLUTTERWAVE_PREMIUM_NEW_USER,
     },
 }
 
@@ -513,9 +526,13 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     if data == "package_selector":
         buttons = []
+        user = get_user(chat_id)
+        is_new_user = not user or user.get('payment_status') != 'registered'
         
-        # Display packages
+        # Display only active packages
         for pkg_id, pkg_data in PACKAGES.items():
+            if not pkg_data.get('is_active', False):
+                continue  # Skip inactive packages
             display_text = f"{pkg_data['emoji']} {pkg_data['display_name']} (₦{pkg_data['price_naira']})"
             buttons.append([InlineKeyboardButton(display_text, callback_data=f"reg_{pkg_id}")])
         
@@ -536,13 +553,24 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         user = get_user(chat_id)
         is_upgrade = user and user.get("payment_status") == 'registered'
         
+        # Determine correct Flutterwave link based on context
+        if is_upgrade and package.get('is_premium'):
+            # User upgrading to premium
+            flutterwave_link = FLUTTERWAVE_UPGRADE
+        elif package.get('is_premium'):
+            # New user buying premium (only if premium is active)
+            flutterwave_link = FLUTTERWAVE_PREMIUM_NEW_USER
+        else:
+            # New user buying basic package
+            flutterwave_link = FLUTTERWAVE_BASIC_NEW_USER
+        
         # Store package info in user_state
         user_state[chat_id] = {
             'package_id': package_id,
             'package': package_id,
             'package_name': package['display_name'],
             'is_upgrade': is_upgrade,
-            'flutterwave_link': package['flutterwave_link'],
+            'flutterwave_link': flutterwave_link,
             'amount_naira': package['price_naira'],
             'amount_euro': package['price_euro'],
         }
@@ -805,6 +833,49 @@ async def daily_reminder(context: ContextTypes.DEFAULT_TYPE):
         return_conn(conn)
 
 
+# ==================== ADMIN PACKAGE MANAGEMENT COMMANDS ====================
+
+async def admin_activate_premium(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Admin command to activate premium package"""
+    chat_id = update.effective_user.id
+    if chat_id != ADMIN_ID:
+        await update.message.reply_text("❌ This command is admin only.")
+        return
+    
+    # Activate premium package
+    PACKAGES['glampremium']['is_active'] = True
+    
+    await update.message.reply_text(
+        "✅ Premium package (GlamPremium) has been activated!\n\n"
+        "New users will now see the option to purchase GlamPremium.\n"
+        "Registered users can upgrade to GlamPremium.\n\n"
+        "Flutterwave Payment Links:\n"
+        f"• Basic (New): {FLUTTERWAVE_BASIC_NEW_USER}\n"
+        f"• Premium (New): {FLUTTERWAVE_PREMIUM_NEW_USER}\n"
+        f"• Upgrade: {FLUTTERWAVE_UPGRADE}"
+    )
+    log_action(chat_id, "premium_activated")
+
+
+async def admin_deactivate_premium(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Admin command to deactivate premium package"""
+    chat_id = update.effective_user.id
+    if chat_id != ADMIN_ID:
+        await update.message.reply_text("❌ This command is admin only.")
+        return
+    
+    # Deactivate premium package
+    PACKAGES['glampremium']['is_active'] = False
+    
+    await update.message.reply_text(
+        "✅ Premium package (GlamPremium) has been deactivated!\n\n"
+        "New users will only see GlamFee option.\n"
+        "Registered users cannot upgrade to GlamPremium.\n\n"
+        "Only GlamFee is now available for purchase."
+    )
+    log_action(chat_id, "premium_deactivated")
+
+
 # ==================== BOT INITIALIZATION AND RUN ====================
 
 async def run_bot():
@@ -825,6 +896,10 @@ async def run_bot():
     application.add_handler(CommandHandler("reject_payment", admin_reject_payment))
     application.add_handler(CommandHandler("payments_pending", admin_pending_payments))
     application.add_handler(CommandHandler("admin_help", admin_help))
+    
+    # Premium package management commands
+    application.add_handler(CommandHandler("activate_premium", admin_activate_premium))
+    application.add_handler(CommandHandler("deactivate_premium", admin_deactivate_premium))
 
     application.add_handler(CallbackQueryHandler(button_handler))
     application.add_handler(MessageHandler(filters.PHOTO, handle_photo))
