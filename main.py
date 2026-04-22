@@ -483,6 +483,27 @@ async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await show_main_menu(update, context)
 
 
+async def reveal_payment_confirmation_button(context: ContextTypes.DEFAULT_TYPE, chat_id: int, message_id: int, flutterwave_link: str):
+    """After 5 seconds, edit message to reveal 'I have made my Payment' button"""
+    await asyncio.sleep(5)
+    
+    # Create buttons: URL button + confirmation + go back
+    buttons = [
+        [InlineKeyboardButton("💳 Click Here To Proceed", url=flutterwave_link)],
+        [InlineKeyboardButton("✅ I Have Made My Payment", callback_data="reg_flutterwave_paid")],
+        [InlineKeyboardButton("🔙 Go Back", callback_data="reg_bank")],
+    ]
+    
+    try:
+        await context.bot.edit_message_reply_markup(
+            chat_id=chat_id,
+            message_id=message_id,
+            reply_markup=InlineKeyboardMarkup(buttons)
+        )
+    except Exception as e:
+        logging.error(f"Failed to update payment buttons for user {chat_id}: {e}")
+
+
 async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
@@ -561,19 +582,35 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         # Get flutterwave link from stored package info
         flutterwave_link = state.get('flutterwave_link', 'https://flutterwave.com/pay/exuv4kvor1cn')
         
-        # Show payment link and instruction to upload screenshot
+        # Initial buttons: Show only "Click Here To Proceed" and "Go Back"
         buttons = [
-            [InlineKeyboardButton("💳 Click Here To Proceed With Payment", url=flutterwave_link)],
-            [InlineKeyboardButton("🔙 Main Menu", callback_data="menu")],
+            [InlineKeyboardButton("💳 Click Here To Proceed", url=flutterwave_link)],
+            [InlineKeyboardButton("🔙 Go Back", callback_data="reg_bank")],
         ]
         
-        payment_msg = f"Complete payment of ₦{state.get('amount_naira', 'N/A')} (€{state.get('amount_euro', 'N/A')}) via Flutterwave.\n\n"
-        payment_msg += "1. Click the button below to open Flutterwave\n"
-        payment_msg += "2. Complete your payment\n"
-        payment_msg += "3. Return here and send a screenshot of the confirmation\n\n"
-        payment_msg += "After payment, upload your receipt screenshot."
+        payment_msg = f"💰 Complete payment of ₦{state.get('amount_naira', 'N/A')} (€{state.get('amount_euro', 'N/A')}) via Flutterwave.\n\n"
+        payment_msg += "🔗 Click the button below to open the payment portal\n"
+        payment_msg += "💳 Complete your payment on the Flutterwave page\n"
+        payment_msg += "✅ Once done, return here and confirm your payment\n\n"
+        payment_msg += "⏳ A confirmation button will appear shortly..."
         
-        await query.edit_message_text(payment_msg, reply_markup=InlineKeyboardMarkup(buttons))
+        sent_msg = await query.edit_message_text(payment_msg, reply_markup=InlineKeyboardMarkup(buttons))
+        message_id = sent_msg.message_id
+        
+        # Schedule the button reveal for 5 seconds later
+        asyncio.create_task(reveal_payment_confirmation_button(context, chat_id, message_id, flutterwave_link))
+        return
+
+    if data == "reg_flutterwave_paid":
+        state = user_state.setdefault(chat_id, {})
+        state['expecting'] = 'reg_screenshot'
+        
+        # User confirmed payment, now request screenshot
+        await query.edit_message_text(
+            "📸 Please upload a screenshot of your payment confirmation.\n\n"
+            "Make sure the payment details are clearly visible.",
+            reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙 Main Menu", callback_data="menu")]]),
+        )
         return
 
     if data.startswith("reg_account_"):
@@ -643,7 +680,7 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         
         # Show payment method selection: only two options (removed "I paid with Flutterwave")
         buttons = [
-            [InlineKeyboardButton("Pay with Flutterwave", callback_data="reg_flutterwave_selection")],
+            [InlineKeyboardButton("Pay with Flutterwave (Fast)", callback_data="reg_flutterwave_selection")],
             [InlineKeyboardButton("Pay with Bank Account", callback_data="reg_bank")],
             [InlineKeyboardButton("🔙 Main Menu", callback_data="menu")],
         ]
