@@ -70,6 +70,8 @@ from admin_handlers import (
     admin_help,
 )
 from error_handlers import error_handler, handle_invalid_command
+from packages_config import package_manager, PREMIUM_FEATURES
+
 
 # Flask setup for keep-alive
 app = Flask(__name__)
@@ -349,6 +351,30 @@ async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
             return_conn(conn)
         return
 
+    # Handle discount price setting
+    state = user_state.get(chat_id, {})
+    if state.get('discount_state') == 'asking_prices' and chat_id == ADMIN_ID:
+        try:
+            # Parse format: glamfee:20000,glampremium:50000
+            price_pairs = text.split(',')
+            price_dict = {}
+            for pair in price_pairs:
+                pkg_id, price = pair.strip().split(':')
+                price_dict[pkg_id.strip()] = int(price.strip())
+            
+            if package_manager.set_discount(price_dict):
+                await update.message.reply_text(
+                    f"✅ Discount enabled with original prices:\n"
+                    f"{chr(10).join([f'{pkg_id}: ₦{price}' for pkg_id, price in price_dict.items()])}"
+                )
+            else:
+                await update.message.reply_text("❌ Failed to set discount.")
+        except Exception as e:
+            await update.message.reply_text(f"❌ Invalid format! Use: glamfee:20000,glampremium:50000\nError: {e}")
+        finally:
+            state.pop('discount_state', None)
+        return
+
     state = user_state.get(chat_id, {})
     if state.get('expecting') == 'support_message':
         await context.bot.send_message(ADMIN_ID, f"Support request from @{update.effective_user.username or 'Unknown'} ({chat_id}): {text}")
@@ -481,16 +507,29 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
 
     if data == "package_selector":
-        buttons = [
-            [InlineKeyboardButton("✈ Glamour Gold Package (₦14,000)", callback_data="reg_standard")],
-            [InlineKeyboardButton("🚀 Glamour Diamond Package (₦20,000)", callback_data="reg_x")],
-            [InlineKeyboardButton("🔙 Main Menu", callback_data="menu")],
-        ]
-        await query.edit_message_text("Choose your package:", reply_markup=InlineKeyboardMarkup(buttons))
+        available_packages = package_manager.get_available_packages(for_new_user=True)
+        buttons = []
+        
+        for pkg_id, pkg_data in available_packages.items():
+            display_price = pkg_data['price']
+            if package_manager.discount_enabled and 'original_price' in pkg_data:
+                original = pkg_data['original_price']
+                display_text = f"{pkg_data['emoji']} {pkg_data['display_name']} (₦{original} ~~₦{display_price}~~)"
+            else:
+                display_text = f"{pkg_data['emoji']} {pkg_data['display_name']} (₦{display_price})"
+            buttons.append([InlineKeyboardButton(display_text, callback_data=f"reg_{pkg_id}")])
+        
+        buttons.append([InlineKeyboardButton("🔙 Main Menu", callback_data="menu")])
+        await query.edit_message_text("💎 Choose your package:", reply_markup=InlineKeyboardMarkup(buttons))
         return
 
-    if data in ["reg_standard", "reg_x"]:
-        package = "Standard" if data == "reg_standard" else "X"
+    if data.startswith("reg_"):
+        package_id = data[4:]  # Remove "reg_" prefix
+        package = package_manager.get_package(package_id)
+        
+        if not package:
+            await query.edit_message_text("Invalid package selected. Please try again.")
+            return
         user_state[chat_id] = {
             'expecting': 'reg_method',
             'package': package,
@@ -607,45 +646,30 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             [InlineKeyboardButton("🔙 Main Menu", callback_data="menu")]
         ]
         await query.edit_message_text(
-            "💥 HOW GLAMOUR WORKS 💼🌍\n\n"
-            "GLAMOUR is a digital earning platform that helps you learn, earn, and grow — all from your smartphone. 📱\n"
-            "You get paid for simple daily actions like walking, posting, gaming, and more! 💰\n"
-            "— — —\n\n"
-            "🥇 GOLD PACKAGE – ₦15,000\n"
-            "• 💸 Sponsor Commission: ₦13,000\n"
-            "• 💰 Instant Cashback: ₦13,000\n"
-            "• 💫 1st Level Spill: ₦400\n"
-            "• 🔁 2nd Level Spill: ₦100\n"
-            "• 🏃 Walk-To-Earn: ₦10 per step\n"
-            "• 📰 Article Post: ₦1,000\n"
-            "• 📸 Story Upload: ₦1,500\n"
-            "— — —\n\n"
-            "🥈 SILVER PACKAGE – ₦10,000\n"
-            "• 💸 Sponsor Commission: ₦9,000\n"
-            "• 💰 Instant Cashback: ₦8,500\n"
-            "• 💫 1st Level Spill: ₦200\n"
-            "• 🔁 2nd Level Spill: ₦100\n"
-            "• 🏃 Walk-To-Earn: ₦6 per step\n"
-            "• 📰 Article Post: ₦700\n"
-            "• 📸 Story Upload: ₦1,000\n"
-            "— — —\n\n"
-            "✨ EXTRA WAYS TO EARN\n"
-            "• 🎮 Play Games\n"
-            "• 💼 Offer Digital Gigs\n"
-            "• 📷 Join Photo Contests\n"
-            "• 📚 Publish Books\n"
-            "• 🏙️ Digital Real Estate\n"
-            "— — —\n\n"
-            "🎓 MENTORSHIP COMMUNITY BENEFITS\n"
-            "Once you join, you'll get access to an exclusive mentorship group where you'll learn how to:\n"
-            "• 💰 Earn millions on GLAMOUR\n"
-            "• 🎬 Create viral content\n"
-            "• 📈 Run ads that convert\n"
-            "• 🔓 Unlock premium tools (Canva, Netflix, Gemini & more AI creator tools for free)\n"
-            "— — —\n\n"
-            "🚀 Choose 'Gold' or 'Silver' and get started with your preferred package!\n"
-            "🎓 FOR PROPER GUIDANCE: you will gain access and be added to a mentorship class to learn how to make up to ₦300,000 weekly with the opportunities on Glamour after registration.\n"
-            " Ensure to listen to the Voice Note below to understand more about the features you will benefit from...",
+            "� *GLAMOUR EARNING STRUCTURE*\n\n"
+            "💎 START YOUR GLAM JOURNEY\n"
+            "• *Glam Fee*: ₦14,000 (€7)\n"
+            "• *Glam Link Bonus*: ₦12,000 (€6) (instant earning boost)\n"
+            "• *Glam Reward*: ₦10,000 (€5)\n"
+            "• *1st Indirect*: ₦400\n"
+            "• *2nd Indirect*: ₦100\n\n"
+            "💡 Quick Recovery: Your initial investment returns fast then your earnings scale steadily.\n\n"
+            "💸 *DAILY EARNING STREAMS*\n"
+            "• 🎥 *GlamLifestyle*: €2/hour\n"
+            "• 📜 *GlamScript2Cash*: €2/script\n"
+            "• ⏱️ *GlamRealtime*: €2/hour\n"
+            "• 🌍 *GlamLingua*: €2/hour\n"
+            "• 📞 *GlamFaceTime*: €2/hour\n"
+            "• 💼 *GlamWorks*: €2/hour\n"
+            "• 🌙 *GlamDarkMode*: €2/hour\n\n"
+            "💎 *Total Potential: €12/hour*\n\n"
+            "🌐 With Glamour's Global Earning Potential, You Get:\n"
+            "• Multiple income channels\n"
+            "• Network-driven earning expansion\n"
+            "• Easy Earning Access and Global Partnerships\n"
+            "• Consistent daily income flow\n\n"
+            "🔥 *Your Soft Life begins with GLAMOUR* 🔥",
+            parse_mode='Markdown',
             reply_markup=InlineKeyboardMarkup(keyboard)
         )
         
@@ -756,7 +780,195 @@ async def daily_reminder(context: ContextTypes.DEFAULT_TYPE):
         return_conn(conn)
 
 
+# ==================== ADMIN PACKAGE MANAGEMENT COMMANDS ====================
+
+async def admin_activate_premium(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Admin command to activate premium package availability"""
+    chat_id = update.effective_user.id
+    if chat_id != ADMIN_ID:
+        await update.message.reply_text("❌ This command is admin only.")
+        return
+    
+    if not context.args:
+        await update.message.reply_text(
+            "Usage: /activate_premium <new_users: yes/no>\n"
+            "Example: /activate_premium yes"
+        )
+        return
+    
+    available_for_new = context.args[0].lower() == 'yes'
+    if package_manager.activate_premium(available_for_new_users=available_for_new):
+        status = "for all users" if available_for_new else "for registered users only"
+        await update.message.reply_text(f"✅ Premium package activated {status}!")
+    else:
+        await update.message.reply_text("❌ Failed to activate premium package.")
+
+
+async def admin_deactivate_premium(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Admin command to deactivate premium package"""
+    chat_id = update.effective_user.id
+    if chat_id != ADMIN_ID:
+        await update.message.reply_text("❌ This command is admin only.")
+        return
+    
+    if package_manager.deactivate_premium():
+        await update.message.reply_text("✅ Premium package deactivated. Only GlamFee is available.")
+    else:
+        await update.message.reply_text("❌ Failed to deactivate premium package.")
+
+
+async def admin_set_discount(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Admin command to set discount"""
+    chat_id = update.effective_user.id
+    if chat_id != ADMIN_ID:
+        await update.message.reply_text("❌ This command is admin only.")
+        return
+    
+    user_state[chat_id] = {'discount_state': 'asking_prices', 'price_data': {}}
+    packages = package_manager.list_all_packages()
+    
+    text = "Enter original prices for each package (will be shown struck-through):\n\n"
+    for pkg_id, pkg_data in packages.items():
+        text += f"{pkg_data['display_name']}: (current: ₦{pkg_data['price']})\n"
+    
+    text += "\nReply in format: glamfee:20000,glampremium:50000"
+    await update.message.reply_text(text)
+
+
+async def admin_remove_discount(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Admin command to remove discount"""
+    chat_id = update.effective_user.id
+    if chat_id != ADMIN_ID:
+        await update.message.reply_text("❌ This command is admin only.")
+        return
+    
+    if package_manager.remove_discount():
+        await update.message.reply_text("✅ Discount removed. All packages now show without struck-through prices.")
+    else:
+        await update.message.reply_text("❌ Failed to remove discount.")
+
+
+async def admin_list_packages(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Admin command to list all packages"""
+    chat_id = update.effective_user.id
+    if chat_id != ADMIN_ID:
+        await update.message.reply_text("❌ This command is admin only.")
+        return
+    
+    packages = package_manager.list_all_packages()
+    text = "📦 *Available Packages*:\n\n"
+    
+    for pkg_id, pkg_data in packages.items():
+        text += f"*{pkg_data['display_name']}* ({pkg_id})\n"
+        text += f"  Price: ₦{pkg_data['price']} (€{pkg_data['currency_euro']})\n"
+        text += f"  Original: ₦{pkg_data.get('original_price', pkg_data['price'])}\n"
+        text += f"  Premium: {'Yes' if pkg_data.get('is_premium') else 'No'}\n"
+        text += f"  New Users: {'✅' if pkg_data.get('is_available_for_new_users') else '❌'}\n"
+        text += f"  Registered: {'✅' if pkg_data.get('is_available_for_registered_users') else '❌'}\n\n"
+    
+    text += f"\n💱 Discount Status: {'🔴 Enabled' if package_manager.discount_enabled else '🟢 Disabled'}"
+    text += f"\n👑 Premium Status: {'🔴 Enabled' if package_manager.premium_enabled else '🟢 Disabled'}"
+    
+    await update.message.reply_text(text, parse_mode='Markdown')
+
+
+async def admin_rename_package(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Admin command to rename a package"""
+    chat_id = update.effective_user.id
+    if chat_id != ADMIN_ID:
+        await update.message.reply_text("❌ This command is admin only.")
+        return
+    
+    if len(context.args) < 3:
+        await update.message.reply_text(
+            "Usage: /rename_package <package_id> <new_name> <display_name>\n"
+            "Example: /rename_package glamfee GlamFee 'GlamFee Basic'"
+        )
+        return
+    
+    pkg_id = context.args[0]
+    new_name = context.args[1]
+    display_name = ' '.join(context.args[2:])
+    
+    if package_manager.rename_package(pkg_id, new_name, display_name):
+        await update.message.reply_text(f"✅ Package renamed to '{display_name}'")
+    else:
+        await update.message.reply_text(f"❌ Package '{pkg_id}' not found.")
+
+
+async def admin_set_package_price(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Admin command to set package price"""
+    chat_id = update.effective_user.id
+    if chat_id != ADMIN_ID:
+        await update.message.reply_text("❌ This command is admin only.")
+        return
+    
+    if len(context.args) < 3:
+        await update.message.reply_text(
+            "Usage: /set_price <package_id> <price_naira> <price_euro>\n"
+            "Example: /set_price glamfee 14000 7"
+        )
+        return
+    
+    pkg_id = context.args[0]
+    try:
+        price_naira = int(context.args[1])
+        price_euro = float(context.args[2])
+    except ValueError:
+        await update.message.reply_text("❌ Prices must be numbers!")
+        return
+    
+    if package_manager.set_package_price(pkg_id, price_naira, price_euro):
+        await update.message.reply_text(f"✅ Price updated: ₦{price_naira} (€{price_euro})")
+    else:
+        await update.message.reply_text(f"❌ Package '{pkg_id}' not found.")
+
+
+async def admin_commandlist(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Admin command to list all available admin commands"""
+    chat_id = update.effective_user.id
+    if chat_id != ADMIN_ID:
+        await update.message.reply_text("❌ This command is admin only.")
+        return
+    
+    commands_text = """
+🔧 *ADMIN COMMANDS FOR GLAMOUR BOT*
+
+📦 *PACKAGE MANAGEMENT*
+/activate_premium <yes/no> - Activate premium package (yes=for new users, no=registered only)
+/deactivate_premium - Disable premium package
+/list_packages - Show all available packages with details
+/rename_package <id> <name> <display> - Rename a package
+/set_price <id> <naira> <euro> - Set package price
+
+💰 *DISCOUNT MANAGEMENT*
+/set_discount - Enable discount (prompts for original prices)
+/remove_discount - Disable discount
+
+📊 *ANALYTICS & MANAGEMENT*
+/analytics - View platform analytics
+/stats_package - Stats by package type
+/payment_approve - Manual payment approval
+/approve_payment - Approve pending payment
+/reject_payment - Reject pending payment
+/payments_pending - List pending payments
+/broadcast - Send message to all users
+/add_task - Add earning task
+/admin_help - Admin help menu
+/commandlist - This command (show all commands)
+
+🎯 *FEATURES*
+• Discount: Shows original price struck-through when enabled
+• Premium: Basic (GlamFee) vs Premium (GlamPremium) packages
+• Price Display: Automatic conversion Naira ↔ Euro
+• User-Targeted: Show packages based on user type (new/registered)
+"""
+    
+    await update.message.reply_text(commands_text, parse_mode='Markdown')
+
+
 async def run_bot():
+
     global application
     application = Application.builder().token(BOT_TOKEN).build()
 
@@ -774,6 +986,16 @@ async def run_bot():
     application.add_handler(CommandHandler("reject_payment", admin_reject_payment))
     application.add_handler(CommandHandler("payments_pending", admin_pending_payments))
     application.add_handler(CommandHandler("admin_help", admin_help))
+    
+    # Package management commands
+    application.add_handler(CommandHandler("activate_premium", admin_activate_premium))
+    application.add_handler(CommandHandler("deactivate_premium", admin_deactivate_premium))
+    application.add_handler(CommandHandler("set_discount", admin_set_discount))
+    application.add_handler(CommandHandler("remove_discount", admin_remove_discount))
+    application.add_handler(CommandHandler("list_packages", admin_list_packages))
+    application.add_handler(CommandHandler("rename_package", admin_rename_package))
+    application.add_handler(CommandHandler("set_price", admin_set_package_price))
+    application.add_handler(CommandHandler("commandlist", admin_commandlist))
 
     application.add_handler(CallbackQueryHandler(button_handler))
     application.add_handler(MessageHandler(filters.PHOTO, handle_photo))
