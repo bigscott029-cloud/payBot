@@ -18,7 +18,14 @@ WEBAPP_URL = os.getenv("WEBAPP_URL", "https://EvermoreAI.onrender.com/app")
 # server-verified payments.  Do not put it in source control.
 FLUTTERWAVE_SECRET_KEY = os.getenv("FLUTTERWAVE_SECRET_KEY", "")
 FLUTTERWAVE_WEBHOOK_HASH = os.getenv("FLUTTERWAVE_WEBHOOK_HASH", "")
-PUBLIC_BASE_URL = os.getenv("PUBLIC_BASE_URL", "").rstrip("/")
+# Render exposes RENDER_EXTERNAL_URL automatically. WEBHOOK_URL is supported
+# for existing deployments, while PUBLIC_BASE_URL remains the explicit override.
+PUBLIC_BASE_URL = (
+    os.getenv("PUBLIC_BASE_URL")
+    or os.getenv("RENDER_EXTERNAL_URL")
+    or os.getenv("WEBHOOK_URL")
+    or ""
+).rstrip("/")
 FLUTTERWAVE_BASIC_NEW_USER = os.getenv("FLUTTERWAVE_BASIC_NEW_USER", "https://flutterwave.com/pay/p3eghk5rrsmn")
 FLUTTERWAVE_PREMIUM_NEW_USER = os.getenv("FLUTTERWAVE_PREMIUM_NEW_USER", "https://flutterwave.com/pay/p3eghk5rrsmn")
 FLUTTERWAVE_UPGRADE = os.getenv("FLUTTERWAVE_UPGRADE", FLUTTERWAVE_PREMIUM_NEW_USER)

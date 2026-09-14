@@ -16,6 +16,7 @@ WEBAPP_URL=https://your_webapp_url.com/app
 FLUTTERWAVE_SECRET_KEY=FLWSECK_TEST-...
 # Public HTTPS URL of this bot service, used for Flutterwave's redirect callback
 PUBLIC_BASE_URL=https://your-bot-service.example.com
+# Render alternative: RENDER_EXTERNAL_URL is used automatically when present.
 # Optional: verify Flutterwave webhook requests if you add /flutterwave/webhook
 FLUTTERWAVE_WEBHOOK_HASH=your_flutterwave_webhook_hash
 # In the Flutterwave Dashboard, set the webhook URL to:
@@ -26,6 +27,9 @@ DATABASE_URL=postgresql://username:password@host:port/database_name
 # Transaction pooler (Supabase port 6543) is supported; prepared statements
 # are disabled in db.py. Keep this modest for a single Render worker.
 DATABASE_POOL_MAX_SIZE=4
+
+# Required admin identity (numeric Telegram user ID, not @username)
+ADMIN_ID=your_telegram_numeric_id
 
 # Optional: Redis for caching (if you add Redis support later)
 # REDIS_URL=redis://localhost:6379
