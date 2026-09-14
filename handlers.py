@@ -59,8 +59,8 @@ class UserHandlers:
 
             keyboard = [[InlineKeyboardButton("🚀 Get Started", callback_data="menu")]]
             await update.message.reply_text(
-                "Welcome to Glamour!\n\n"
-                "Social Media is the new Oil Money and Glamour will help you get started mining form it.\n"
+                "Welcome to Evermore AI!\n\n"
+                "Social Media is the new Oil Money and Evermore AI will help you get started mining form it.\n"
                 "Get paid for using your phone and doing what you love most.\n"
                 "• Read posts ➜ earn $2.5/10 words\n• Take a Walk ➜ earn $5\n"
                 "• Connect with friends with streaks ➜ earn up to $20\n"
@@ -71,7 +71,7 @@ class UserHandlers:
 
             reply_keyboard = [["/menu(🔙)"]]
             if is_registered(chat_id):
-                reply_keyboard.append([KeyboardButton(text="Play Glamour", web_app=WebAppInfo(url=f"{WEBAPP_URL}/?chat_id={chat_id}"))])
+                reply_keyboard.append([KeyboardButton(text="Play Evermore AI", web_app=WebAppInfo(url=f"{WEBAPP_URL}/?chat_id={chat_id}"))])
 
         except Exception as e:
             logger.error(f"Unexpected error in start: {e}")
@@ -83,11 +83,11 @@ class UserHandlers:
         chat_id = update.effective_user.id
 
         if not is_registered(chat_id):
-            await update.message.reply_text("Please complete registration to get login's to Glamour.")
+            await update.message.reply_text("Please complete registration to get login's to Evermore AI.")
             return
 
         kb = [[KeyboardButton(
-            text="Play Glamour",
+            text="Play Evermore AI",
             web_app=WebAppInfo(
                 url=f"{WEBAPP_URL}/?chat_id={chat_id}&username={update.effective_user.username or 'guest'}"
             )

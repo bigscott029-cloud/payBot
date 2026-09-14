@@ -33,7 +33,14 @@ class RedisCache:
     def get(self, key: str) -> Optional[Any]:
         """Get value from cache"""
         if not self.enabled:
-            return self.memory_cache.get(key)
+            item = self.memory_cache.get(key)
+            if not item:
+                return None
+            value, expires_at = item
+            if expires_at and time.time() >= expires_at:
+                self.memory_cache.pop(key, None)
+                return None
+            return value
 
         try:
             value = self.redis.get(key)
@@ -47,7 +54,7 @@ class RedisCache:
     def set(self, key: str, value: Any, ttl: int = 300) -> bool:
         """Set value in cache with TTL"""
         if not self.enabled:
-            self.memory_cache[key] = value
+            self.memory_cache[key] = (value, time.time() + ttl if ttl else None)
             return True
 
         try:

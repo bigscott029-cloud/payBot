@@ -1,12 +1,15 @@
 #!/usr/bin/env python3
-# main.py — Glamour Main Bot for Telegram (modular version)
+# main.py — Evermore AI Main Bot for Telegram (modular version)
 
 import logging
 import os
 import datetime
 import asyncio
+import hmac
+import csv
+import io
 from threading import Thread
-from flask import Flask
+from flask import Flask, request, jsonify
 from telegram import (
     InlineKeyboardButton,
     InlineKeyboardMarkup,
@@ -28,7 +31,6 @@ from config import (
     BOT_TOKEN,
     ADMIN_ID,
     PAYMENT_ACCOUNTS,
-    COUPON_PAYMENT_ACCOUNTS,
     FAQS,
     HELP_TOPICS,
     WEBAPP_URL,
@@ -36,9 +38,10 @@ from config import (
     DAILY_TASK_LINK,
     SITE_LINK,
     AI_BOOST_LINK,
-    FLUTTERWAVE_BASIC_NEW_USER,
-    FLUTTERWAVE_PREMIUM_NEW_USER,
-    FLUTTERWAVE_UPGRADE,
+    FLUTTERWAVE_WEBHOOK_HASH,
+    EVERAI_TRIAL_PRICE,
+    EVERAI_PREMIUM_PRICE,
+    EVERAI_PREMIUM_REGULAR_PRICE,
 )
 from db import (
     init_database,
@@ -49,8 +52,13 @@ from db import (
     log_interaction,
     get_conn,
     return_conn,
+    get_setting,
+    set_setting,
 )
-from payments import create_payment, get_payment, approve_payment, reject_payment
+from payments import (create_payment, get_payment, approve_payment, reject_payment,
+                      initialize_flutterwave_payment, verify_flutterwave_payment,
+                      add_access_code, fulfill_waiting_codes, allocate_access_code,
+                      get_code_stock, revoke_access_code, payment_export_rows)
 from utils import (
     validate_email,
     validate_phone,
@@ -60,6 +68,9 @@ from utils import (
     command_limiter,
     withdrawal_limiter,
     log_action,
+    get_available_media_files,
+    verify_task_with_gemini,
+    ask_evermore_ai,
 )
 from admin_handlers import (
     admin_analytics,
@@ -70,31 +81,29 @@ from admin_handlers import (
     admin_reject_payment,
     admin_pending_payments,
     admin_help,
+    admin_set_explainer,
 )
 from error_handlers import error_handler, handle_invalid_command
 
 # ==================== HARDCODED PACKAGE DEFINITIONS ====================
-# Package configurations: GlamFee (basic) and GlamPremium (premium)
+# Prices match the active Optinex EverAI plans.
 PACKAGES = {
-    'glamfee': {
-        'id': 'glamfee',
-        'display_name': 'GlamFee',
+    'trial': {
+        'id': 'trial',
+        'display_name': 'EverAI Trial',
         'emoji': '💎',
-        'price_naira': 14000,
-        'price_euro': 7,
+        'price_naira': EVERAI_TRIAL_PRICE,
         'is_premium': False,
-        'is_active': True,  # Always available
-        'flutterwave_link': FLUTTERWAVE_BASIC_NEW_USER,
+        'is_active': True,
     },
-    'glampremium': {
-        'id': 'glampremium',
-        'display_name': 'GlamPremium',
+    'premium': {
+        'id': 'premium',
+        'display_name': 'EverAI Premium',
         'emoji': '👑',
-        'price_naira': 35000,
-        'price_euro': 18,
+        'price_naira': EVERAI_PREMIUM_PRICE,
+        'original_price_naira': EVERAI_PREMIUM_REGULAR_PRICE,
         'is_premium': True,
-        'is_active': False,  # Deactivated by default - activate with /activate_premium
-        'flutterwave_link': FLUTTERWAVE_PREMIUM_NEW_USER,
+        'is_active': True,
     },
 }
 
@@ -114,11 +123,156 @@ app = Flask(__name__)
 
 # Global application instance
 application = None
+bot_loop = None
 
 
 @app.route('/')
 def home():
-    return "Glamour is alive!"
+    return "Evermore AI is alive!"
+
+
+@app.route('/flutterwave/callback')
+def flutterwave_callback():
+    """Flutterwave redirects here. Payment is verified server-to-server."""
+    tx_ref = request.args.get('tx_ref', '')
+    if not tx_ref:
+        return "Payment reference missing. Return to Telegram and try again.", 400
+    try:
+        payment, status = verify_flutterwave_payment(tx_ref)
+        if payment and status == 'pending_code':
+            allocation = allocate_access_code(payment['id'])
+            if allocation:
+                code, paid_payment = allocation
+                if application and bot_loop:
+                    asyncio.run_coroutine_threadsafe(deliver_code(paid_payment['chat_id'], code), bot_loop)
+                return "Payment confirmed. Your verified access code has been sent in Telegram."
+            return "Payment confirmed. Your access code is pending stock and will be delivered in Telegram automatically."
+        return "Payment is not yet confirmed. Return to Telegram and use Check payment status."
+    except Exception as exc:
+        logger.exception("Flutterwave callback error")
+        return "We could not verify this payment yet. Return to Telegram and try Check payment status.", 502
+
+
+@app.route('/flutterwave/webhook', methods=['POST'])
+def flutterwave_webhook():
+    """Optional automatic fulfillment endpoint; configure this URL in Flutterwave."""
+    supplied_hash = request.headers.get('verif-hash', '')
+    if not FLUTTERWAVE_WEBHOOK_HASH or not hmac.compare_digest(supplied_hash, FLUTTERWAVE_WEBHOOK_HASH):
+        return "Unauthorized", 401
+    payload = request.get_json(silent=True) or {}
+    transaction = payload.get('data') or {}
+    tx_ref = transaction.get('tx_ref', '')
+    if not tx_ref:
+        return "OK", 200
+    try:
+        payment, status = verify_flutterwave_payment(tx_ref)
+        if payment and status == 'pending_code':
+            allocation = allocate_access_code(payment['id'])
+            if allocation and application and bot_loop:
+                code, paid_payment = allocation
+                asyncio.run_coroutine_threadsafe(deliver_code(paid_payment['chat_id'], code), bot_loop)
+        return "OK", 200
+    except Exception:
+        logger.exception("Flutterwave webhook error")
+        return "Retry", 500
+
+
+# ==================== TELEGRAM MINI-APP REST API ENDPOINTS ====================
+
+@app.route('/api/user/stats', methods=['GET'])
+def api_user_stats():
+    """Returns live user stats for Telegram WebApp"""
+    chat_id = request.args.get('chat_id', type=int)
+    if not chat_id:
+        return jsonify({"success": False, "error": "chat_id parameter required"}), 400
+    user = get_user(chat_id)
+    if not user:
+        return jsonify({"success": False, "error": "User not found"}), 404
+    return jsonify({"success": True, "user": dict(user)})
+
+
+@app.route('/api/tasks', methods=['GET'])
+def api_tasks():
+    """Returns available daily tasks and completion status for Telegram WebApp"""
+    chat_id = request.args.get('chat_id', type=int)
+    conn = get_conn()
+    try:
+        cursor = conn.cursor()
+        cursor.execute("SELECT * FROM tasks WHERE expires_at > CURRENT_TIMESTAMP OR expires_at IS NULL")
+        tasks = cursor.fetchall()
+        completed_ids = []
+        if chat_id:
+            cursor.execute("SELECT task_id FROM user_tasks WHERE user_id=%s", (chat_id,))
+            completed_ids = [r['task_id'] for r in cursor.fetchall()]
+        return jsonify({"success": True, "tasks": tasks, "completed_task_ids": completed_ids})
+    except Exception as e:
+        logger.error(f"API tasks error: {e}")
+        return jsonify({"success": False, "error": str(e)}), 500
+    finally:
+        return_conn(conn)
+
+
+@app.route('/api/tasks/complete', methods=['POST'])
+def api_complete_task():
+    """Processes task completion with Gemini AI verification for Telegram WebApp"""
+    data = request.get_json(silent=True) or {}
+    chat_id = data.get('chat_id')
+    task_id = data.get('task_id')
+    submission = data.get('submission', '')
+
+    if not chat_id or not task_id:
+        return jsonify({"success": False, "error": "chat_id and task_id required"}), 400
+
+    conn = get_conn()
+    try:
+        cursor = conn.cursor()
+        cursor.execute("SELECT * FROM tasks WHERE id=%s", (task_id,))
+        task = cursor.fetchone()
+        if not task:
+            return jsonify({"success": False, "error": "Task not found"}), 404
+
+        is_valid, msg = verify_task_with_gemini(task.get('type', 'general'), task.get('link', ''), submission)
+        if not is_valid:
+            return jsonify({"success": False, "error": msg}), 400
+
+        cursor.execute("INSERT INTO user_tasks (user_id, task_id, completed_at) VALUES (%s, %s, CURRENT_TIMESTAMP) ON CONFLICT DO NOTHING", (chat_id, task_id))
+        reward = task.get('reward', 0.0) or 0.0
+        if reward > 0:
+            cursor.execute("UPDATE users SET balance = balance + %s WHERE chat_id=%s", (reward, chat_id))
+
+        return jsonify({"success": True, "message": msg, "reward": reward})
+    except Exception as e:
+        logger.error(f"API complete task error: {e}")
+        return jsonify({"success": False, "error": str(e)}), 500
+    finally:
+        return_conn(conn)
+
+
+@app.route('/api/withdraw', methods=['POST'])
+def api_withdraw():
+    """Handles balance withdrawal request for Telegram WebApp"""
+    data = request.get_json(silent=True) or {}
+    chat_id = data.get('chat_id')
+    amount = data.get('amount', 0.0)
+
+    if not chat_id or amount <= 0:
+        return jsonify({"success": False, "error": "Valid chat_id and positive amount required"}), 400
+
+    user = get_user(chat_id)
+    if not user or user.get('balance', 0) < amount:
+        return jsonify({"success": False, "error": "Insufficient balance"}), 400
+
+    conn = get_conn()
+    try:
+        cursor = conn.cursor()
+        cursor.execute("UPDATE users SET balance = balance - %s WHERE chat_id=%s", (amount, chat_id))
+        log_action(chat_id, "withdrawal_requested", details=f"amount={amount}")
+        return jsonify({"success": True, "message": "Withdrawal request submitted successfully."})
+    except Exception as e:
+        logger.error(f"API withdraw error: {e}")
+        return jsonify({"success": False, "error": str(e)}), 500
+    finally:
+        return_conn(conn)
 
 
 def run_web():
@@ -138,12 +292,80 @@ if not ADMIN_ID:
     raise ValueError("ADMIN_ID is required in environment (.env)")
 
 user_state = {}
+last_stock_alert = None
 
 logging.basicConfig(
     format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
     level=logging.INFO,
 )
 logger = logging.getLogger(__name__)
+
+
+async def deliver_code(chat_id, code):
+    await application.bot.send_message(
+        chat_id,
+        f"✅ Payment confirmed\n\nYour verified EverAI access code is:\n`{code}`\n\nKeep it private and use it only on the official platform.",
+        parse_mode='Markdown',
+    )
+
+
+async def add_code_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if update.effective_chat.id != ADMIN_ID:
+        await update.message.reply_text("This command is restricted to the admin.")
+        return
+    if not context.args:
+        await update.message.reply_text("Usage: /add_code <code> [trial|premium] [valid_days]")
+        return
+    code, plan = context.args[0], (context.args[1].lower() if len(context.args) > 1 else None)
+    if plan and plan not in PACKAGES:
+        await update.message.reply_text("Plan must be trial or premium.")
+        return
+    try:
+        valid_days = int(context.args[2]) if len(context.args) > 2 else None
+        if valid_days is not None and valid_days < 1:
+            raise ValueError("valid_days must be at least 1")
+        expires_at = datetime.datetime.now() + datetime.timedelta(days=valid_days) if valid_days else None
+        add_access_code(code, plan, expires_at)
+        fulfilled = fulfill_waiting_codes()
+        for _, (issued_code, payment) in fulfilled:
+            await deliver_code(payment['chat_id'], issued_code)
+        await update.message.reply_text(f"Code added. Delivered {len(fulfilled)} waiting code(s).")
+    except Exception as exc:
+        logger.exception("Could not add access code")
+        await update.message.reply_text(f"Could not add code: {exc}")
+
+
+async def code_stock_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if update.effective_chat.id != ADMIN_ID:
+        return
+    stock, waiting = get_code_stock()
+    stock_text = "\n".join(f"• {row['plan']}: {row['status']} — {row['count']}" for row in stock) or "No codes in inventory."
+    waiting_text = "\n".join(f"• {row['package']}: {row['count']} waiting" for row in waiting) or "No customers waiting."
+    await update.message.reply_text(f"ACCESS-CODE STOCK\n\n{stock_text}\n\nPENDING DELIVERY\n{waiting_text}")
+
+
+async def revoke_code_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if update.effective_chat.id != ADMIN_ID:
+        return
+    if not context.args:
+        await update.message.reply_text("Usage: /revoke_code <code> [reason]")
+        return
+    result = revoke_access_code(context.args[0], " ".join(context.args[1:]) or "Revoked by admin")
+    await update.message.reply_text("Code revoked." if result else "Code was not found or was already revoked.")
+
+
+async def export_payments_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if update.effective_chat.id != ADMIN_ID:
+        return
+    rows = payment_export_rows()
+    output = io.StringIO()
+    fields = ['id', 'chat_id', 'package', 'total_amount', 'method', 'status', 'tx_ref', 'timestamp', 'approved_at']
+    writer = csv.DictWriter(output, fieldnames=fields)
+    writer.writeheader()
+    writer.writerows(rows)
+    document = io.BytesIO(output.getvalue().encode())
+    document.name = f"everai-payments-{datetime.date.today().isoformat()}.csv"
+    await update.message.reply_document(document=document, caption=f"Payment export: {len(rows)} record(s).")
 
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -170,20 +392,11 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     keyboard = [[InlineKeyboardButton("🚀 Get Started", callback_data="menu")]]
     await update.message.reply_text(
-        "✨ *Welcome to GLAMOUR!* ✨\n\n"
-        "💡 *The Luxury of Digital Earning*\n"
-        "Your social influence is currency in the modern economy. Glamour transforms your online presence into real wealth.\n\n"
-        "🎯 *How GLAMOUR Works*\n"
-        "• Share your lifestyle - €2/hour\n"
-        "• Engage with content - €2/hour\n"
-        "• Build your network - €2/hour\n"
-        "• Complete tasks - Unlimited earning potential\n"
-        "• Earn through referrals - 2x multiplier\n\n"
-        "💰 *Get Started Today*\n"
-        "Choose your GLAMOUR package and start your luxury earning journey. "
-        "Quick recovery strategy with multiple income streams equals sustainable wealth.\n\n"
-        "🌟 *Join thousands earning globally right now!*",
-        parse_mode='Markdown',
+        "Welcome to Evermore / EverAI.\n\n"
+        "EverAI is presented as a generative-AI training and opportunity platform. "
+        "Select How It Works to see the training, task, and remote-opportunity overview. "
+        "Availability and earnings depend on the work offered; they are not guaranteed.\n\n"
+        "Choose a verified access plan to continue.",
         reply_markup=InlineKeyboardMarkup(keyboard),
     )
 
@@ -199,8 +412,7 @@ async def show_main_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user = get_user(chat_id)
     buttons = [
         [InlineKeyboardButton("How It Works", callback_data="how_it_works")],
-        [InlineKeyboardButton("Purchase Coupon Code", callback_data="coupon")],
-        [InlineKeyboardButton("💸 Get Registered", callback_data="package_selector")],
+        [InlineKeyboardButton("Buy Verified Access Plans Code", callback_data="package_selector")],
         [InlineKeyboardButton("❓ Help", callback_data="help")],
     ]
 
@@ -209,7 +421,7 @@ async def show_main_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
             [InlineKeyboardButton("📊 My Stats", callback_data="stats")],
             [InlineKeyboardButton("Do Daily Tasks", callback_data="daily_tasks")],
             [InlineKeyboardButton("💰 Earn Extra for the Day", callback_data="earn_extra")],
-            [InlineKeyboardButton("Purchase Coupon", callback_data="coupon")],
+            [InlineKeyboardButton("Buy Verified Access Plans Code", callback_data="package_selector")],
             [InlineKeyboardButton("❓ Help", callback_data="help")],
         ]
         if user["package"] == "X":
@@ -313,12 +525,12 @@ async def handle_photo(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text("Please choose a package and payment account before sending your screenshot.")
         return
 
-    total_amount = 14000
+    total_amount = state.get('amount_naira')
     
     try:
         payment_id = create_payment(
             chat_id=chat_id,
-            payment_type='registration',
+            payment_type='coupon',
             package=package,
             quantity=1,
             total_amount=total_amount,
@@ -333,7 +545,7 @@ async def handle_photo(update: Update, context: ContextTypes.DEFAULT_TYPE):
             file_id,
             caption=(
                 f"📌 Registration payment screenshot from @{update.effective_user.username or 'Unknown'} "
-                f"(chat_id: {chat_id})\nPackage: {package}\nAmount: ₦{total_amount}\nPayment ID: {payment_id}"
+                f"(chat_id: {chat_id})\nPlan: {package}\nAmount: ₦{total_amount}\nPayment ID: {payment_id}"
             ),
             reply_markup=InlineKeyboardMarkup([
                 [InlineKeyboardButton("Approve", callback_data=f"approve_payment_{payment_id}")],
@@ -341,7 +553,7 @@ async def handle_photo(update: Update, context: ContextTypes.DEFAULT_TYPE):
             ]),
         )
         await update.message.reply_text(
-            "Screenshot received! Await admin approval. You can check back later with /stats or /menu."
+            "Transfer proof received. Once approved, your verified access code will be delivered here."
         )
         user_state[chat_id]['expecting'] = None
         user_state[chat_id]['payment_id'] = payment_id
@@ -398,6 +610,28 @@ async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await context.bot.send_message(ADMIN_ID, f"Support request from @{update.effective_user.username or 'Unknown'} ({chat_id}): {text}")
         await update.message.reply_text("Thank you! Our support team will contact you soon.")
         state['expecting'] = None
+        return
+
+    if state.get('expecting') == 'flutterwave_email':
+        if not validate_email(text):
+            await update.message.reply_text("Please send a valid email address for your Flutterwave receipt.")
+            return
+        try:
+            payment_id, tx_ref, link = initialize_flutterwave_payment(
+                chat_id, state['package'], state['amount_naira'], text,
+                update.effective_user.full_name or "Telegram member",
+            )
+            state.update({'expecting': None, 'payment_id': payment_id, 'tx_ref': tx_ref})
+            await update.message.reply_text(
+                f"Secure checkout created for ₦{state['amount_naira']:,}. Complete payment with Flutterwave, then return here to verify it.",
+                reply_markup=InlineKeyboardMarkup([
+                    [InlineKeyboardButton("Pay securely with Flutterwave", url=link)],
+                    [InlineKeyboardButton("Check payment status", callback_data="check_flutterwave")],
+                ]),
+            )
+        except Exception as exc:
+            logger.exception("Could not create Flutterwave checkout")
+            await update.message.reply_text("Checkout is unavailable. Please try again later or choose Opay bank transfer.")
         return
 
     if state.get('expecting') == 'name':
@@ -567,34 +801,15 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         state = user_state.setdefault(chat_id, {})
         state['expecting'] = 'reg_screenshot'
         state['payment_method'] = 'bank'
-        buttons = [[InlineKeyboardButton(name, callback_data=f"reg_account_{name}")] for name in PAYMENT_ACCOUNTS.keys()]
-        buttons.append([InlineKeyboardButton("Other country option", callback_data="reg_other")])
+        buttons = [[InlineKeyboardButton(name, callback_data=f"reg_account_{name}")] for name in PAYMENT_ACCOUNTS]
         buttons.append([InlineKeyboardButton("🔙 Main Menu", callback_data="menu")])
         await query.edit_message_text("Select a bank account to pay to:", reply_markup=InlineKeyboardMarkup(buttons))
         return
 
     if data == "reg_flutterwave_selection":
         state = user_state.setdefault(chat_id, {})
-        state['payment_method'] = 'flutterwave'
-        state['selected_account'] = 'flutterwave'
-        state['expecting'] = 'reg_screenshot'
-        
-        # Store flutterwave link for later use
-        flutterwave_link = state.get('flutterwave_link', 'https://flutterwave.com/pay/exuv4kvor1cn')
-        
-        # Initial menu: Ask user to confirm they're ready to proceed
-        buttons = [
-            [InlineKeyboardButton("💳 Confirm & Proceed to Payment", callback_data="reg_flutterwave_confirm")],
-            [InlineKeyboardButton("🔙 Go Back", callback_data="reg_bank")],
-        ]
-        
-        payment_msg = f"💰 Complete payment of ₦{state.get('amount_naira', 'N/A')} (€{state.get('amount_euro', 'N/A')}) via Flutterwave.\n\n"
-        payment_msg += "🔗 Click 'Confirm & Proceed' to open the payment portal\n"
-        payment_msg += "💳 You'll complete the payment on Flutterwave\n"
-        payment_msg += "✅ After paying, return here to confirm\n\n"
-        payment_msg += "⏳ A confirmation button will appear after you proceed."
-        
-        await query.edit_message_text(payment_msg, reply_markup=InlineKeyboardMarkup(buttons))
+        state['expecting'] = 'flutterwave_email'
+        await query.edit_message_text("Send the email address Flutterwave should use for your receipt.")
         return
 
     if data == "reg_flutterwave_confirm":
@@ -629,6 +844,28 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             "Make sure the payment details are clearly visible.",
             reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙 Main Menu", callback_data="menu")]]),
         )
+        return
+
+    if data == "check_flutterwave":
+        state = user_state.get(chat_id, {})
+        tx_ref = state.get('tx_ref')
+        if not tx_ref:
+            await query.edit_message_text("No active Flutterwave payment was found. Choose a plan to begin again.")
+            return
+        try:
+            payment, status = verify_flutterwave_payment(tx_ref)
+            if status == 'pending_code':
+                allocation = allocate_access_code(payment['id'])
+                if allocation:
+                    code, _ = allocation
+                    await query.edit_message_text(f"✅ Payment confirmed. Your verified access code is:\n`{code}`", parse_mode='Markdown')
+                else:
+                    await query.edit_message_text("✅ Payment confirmed. No code is currently available; your code is pending and will be delivered automatically when stock is added.")
+            else:
+                await query.edit_message_text("Your payment is not confirmed yet. Complete checkout, wait a moment, then check again.", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("Check payment status", callback_data="check_flutterwave")]]))
+        except Exception:
+            logger.exception("Flutterwave status check failed")
+            await query.edit_message_text("We could not check Flutterwave right now. Please try again shortly.")
         return
 
     if data.startswith("reg_account_"):
@@ -674,26 +911,13 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         user = get_user(chat_id)
         is_upgrade = user and user.get("payment_status") == 'registered'
         
-        # Determine correct Flutterwave link based on context
-        if is_upgrade and package.get('is_premium'):
-            # User upgrading to premium
-            flutterwave_link = FLUTTERWAVE_UPGRADE
-        elif package.get('is_premium'):
-            # New user buying premium (only if premium is active)
-            flutterwave_link = FLUTTERWAVE_PREMIUM_NEW_USER
-        else:
-            # New user buying basic package
-            flutterwave_link = FLUTTERWAVE_BASIC_NEW_USER
-        
         # Store package info in user_state
         user_state[chat_id] = {
             'package_id': package_id,
             'package': package_id,
             'package_name': package['display_name'],
             'is_upgrade': is_upgrade,
-            'flutterwave_link': flutterwave_link,
             'amount_naira': package['price_naira'],
-            'amount_euro': package['price_euro'],
         }
         
         # Show payment method selection: only two options (removed "I paid with Flutterwave")
@@ -704,7 +928,7 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         ]
         
         payment_text = f"You selected: {package['emoji']} {package['display_name']}\n"
-        payment_text += f"Price: ₦{package['price_naira']} (€{package['price_euro']})\n\n"
+        payment_text += f"Price: ₦{package['price_naira']:,}\n\n"
         payment_text += "Choose your payment method:"
         
         await query.edit_message_text(payment_text, reply_markup=InlineKeyboardMarkup(buttons))
@@ -722,20 +946,21 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             return
 
         if data.startswith("approve_payment_"):
-            approve_payment(payment_id)
+            approved_payment, _ = approve_payment(payment_id)
+            if not approved_payment or approved_payment['status'] != 'approved':
+                await query.edit_message_text(f"Payment {payment_id} was already processed.")
+                return
             user_chat_id = payment['chat_id']
             conn = get_conn()
             try:
                 cursor = conn.cursor()
-                cursor.execute(
-                    "UPDATE users SET payment_status=%s WHERE chat_id=%s",
-                    ('pending_details', user_chat_id),
-                )
-                await context.bot.send_message(
-                    user_chat_id,
-                    "✅ Your payment has been approved by the admin. Please send your full name to continue registration."
-                )
-                user_state[user_chat_id] = {'expecting': 'name'}
+                allocation = allocate_access_code(payment_id)
+                if allocation:
+                    code, _ = allocation
+                    await context.bot.send_message(user_chat_id, f"✅ Payment approved. Your verified access code is: `{code}`", parse_mode='Markdown')
+                else:
+                    cursor.execute("UPDATE payments SET status='pending_code' WHERE id=%s", (payment_id,))
+                    await context.bot.send_message(user_chat_id, "✅ Payment approved. Your code is pending stock and will be delivered automatically.")
             finally:
                 return_conn(conn)
             await query.edit_message_text(f"Payment {payment_id} approved.")
@@ -764,62 +989,114 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             [InlineKeyboardButton("🔙 Main Menu", callback_data="menu")]
         ]
         await query.edit_message_text(
-            "💎 *GLAMFEE PACKAGE*\n\n"
-            "Investment: *₦14,000* (*€7*) ✨\n"
-            "• Instant access to GlamFee earning platform\n"
-            "• Direct earning opportunities: €2/hour multiple streams\n"
-            "• Network commission: 1st Indirect ₦400, 2nd Indirect ₦100\n"
-            "• Daily earning potential: €12+/hour\n"
-            "• Fast ROI with consistent daily income\n"
-            "• Access to all earning channels\n\n"
-            "💰 *WHY CHOOSE GLAMOUR?*\n"
-            "✅ Multiple daily income streams (up to €12+/hour)\n"
-            "✅ Quick investment recovery & scaling earnings\n"
-            "✅ Global earning potential with flexible work hours\n"
-            "✅ Easy access with network-driven expansion\n"
-            "✅ Transparent payment system in EUR & NGN\n"
-            "✅ Consistent daily income flow\n\n"
-            "🔥 *Your Soft Life begins with GLAMOUR - Choose Your Package Now!* 🔥",
-            parse_mode='Markdown',
+            "HOW EVERMORE / EVERAI WORKS\n\n"
+            "Evermore is the parent brand of EverAI, a generative-AI assistant platform. "
+            "EverAI is designed to work with leading AI platforms and needs trainers to help assess responses, improve memory, and complete opinion tasks.\n\n"
+            "Possible training tasks\n"
+            "• Rate EverAI responses as Good or Bad — up to $16.2/hour\n"
+            "• Answer simple questions to correct memory — up to $18.6/hour\n"
+            "• Complete opinion or survey tasks — up to $17.2/hour\n\n"
+            "Remote opportunities may include audio transcription, AI content rating, click-and-earn, and survey tasks. Availability, eligibility, and compensation depend on the task offered; no earnings are guaranteed.\n\n"
+            "Choose a verified access plan to continue.",
             reply_markup=InlineKeyboardMarkup(keyboard)
         )
         
-        # Send voice note
-        voice_keyboard = [
-            [InlineKeyboardButton("✅ I'm done listening...", callback_data="close_voice")]
-        ]
-        voice_markup = InlineKeyboardMarkup(voice_keyboard)
-        try:
-            import os
-            voice_path = os.path.join(os.path.dirname(__file__), "voice.ogg")
-            with open(voice_path, "rb") as voice:
-                await context.bot.send_voice(
-                    chat_id=query.message.chat_id,
-                    voice=voice,
-                    caption="Glamour Explained 🎧",
-                    reply_markup=voice_markup
-                )
-        except FileNotFoundError:
-            logger.error("Voice file 'voice.ogg' not found")
+        # Send explainer media (DB-configured Telegram file_id, or local disk fallback)
+        explainer_id = get_setting('explainer_file_id')
+        explainer_type = get_setting('explainer_file_type')
+
+        sent_any = False
+
+        if explainer_id and explainer_type:
+            try:
+                if explainer_type == 'video':
+                    await context.bot.send_video(
+                        chat_id=query.message.chat_id,
+                        video=explainer_id,
+                        caption="Evermore AI Explained 🎬",
+                        reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("✅ I'm done watching...", callback_data="close_media")]])
+                    )
+                elif explainer_type == 'voice':
+                    await context.bot.send_voice(
+                        chat_id=query.message.chat_id,
+                        voice=explainer_id,
+                        caption="Evermore AI Explained 🎧",
+                        reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("✅ I'm done listening...", callback_data="close_media")]])
+                    )
+                else:
+                    await context.bot.send_audio(
+                        chat_id=query.message.chat_id,
+                        audio=explainer_id,
+                        caption="Evermore AI Explained 🎧",
+                        reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("✅ I'm done listening...", callback_data="close_media")]])
+                    )
+                sent_any = True
+            except Exception as e:
+                logger.error(f"Error sending DB explainer media ({explainer_id}): {e}")
+
+        if not sent_any:
+            base_dir = os.path.dirname(__file__)
+            videos, audios = get_available_media_files(base_dir)
+
+            if videos:
+                close_video_markup = InlineKeyboardMarkup([
+                    [InlineKeyboardButton("✅ I'm done watching...", callback_data="close_media")]
+                ])
+                for vpath in videos:
+                    try:
+                        with open(vpath, "rb") as vid:
+                            await context.bot.send_video(
+                                chat_id=query.message.chat_id,
+                                video=vid,
+                                caption="Evermore AI Explained 🎬",
+                                reply_markup=close_video_markup
+                            )
+                        sent_any = True
+                    except Exception as e:
+                        logger.error(f"Error sending video '{vpath}': {e}")
+
+            if audios:
+                close_voice_markup = InlineKeyboardMarkup([
+                    [InlineKeyboardButton("✅ I'm done listening...", callback_data="close_media")]
+                ])
+                for apath in audios:
+                    try:
+                        with open(apath, "rb") as aud:
+                            if apath.lower().endswith('.ogg'):
+                                await context.bot.send_voice(
+                                    chat_id=query.message.chat_id,
+                                    voice=aud,
+                                    caption="Evermore AI Explained 🎧",
+                                    reply_markup=close_voice_markup
+                                )
+                            else:
+                                await context.bot.send_audio(
+                                    chat_id=query.message.chat_id,
+                                    audio=aud,
+                                    caption="Evermore AI Explained 🎧",
+                                    reply_markup=close_voice_markup
+                                )
+                        sent_any = True
+                    except Exception as e:
+                        logger.error(f"Error sending audio '{apath}': {e}")
+
+        if not sent_any:
+            logger.error("No media files (video or audio) found")
+            fallback_markup = InlineKeyboardMarkup([
+                [InlineKeyboardButton("✅ Close", callback_data="close_media")]
+            ])
             await context.bot.send_message(
                 chat_id=query.message.chat_id,
-                text="Error: Voice note file not found. Please contact support.",
-                reply_markup=voice_markup
-            )
-        except Exception as e:
-            logger.error(f"Error sending voice note: {e}")
-            await context.bot.send_message(
-                chat_id=query.message.chat_id,
-                text="An error occurred while sending the voice note. Please try again.",
-                reply_markup=voice_markup
+                text="Error: Media explanation file not found. Please contact support.",
+                reply_markup=fallback_markup
             )
         return
 
-    if data == "close_voice":
+    if data in ("close_voice", "close_video", "close_media"):
         try:
             await query.message.delete()
         except Exception as e:
-            logger.error(f"Error deleting voice message: {e}")
+            logger.error(f"Error deleting media message: {e}")
             await query.answer("Message deleted or already removed.")
         return
 
@@ -882,13 +1159,25 @@ async def daily_reminder(context: ContextTypes.DEFAULT_TYPE):
         rows = cursor.fetchall()
         for row in rows:
             try:
-                await context.bot.send_message(row['chat_id'], "🌟 Daily Reminder: Complete your Glamour tasks today!")
+                await context.bot.send_message(row['chat_id'], "🌟 Daily Reminder: Complete your Evermore AI tasks today!")
             except Exception as exc:
                 logger.error(f"Failed sending reminder to {row['chat_id']}: {exc}")
     except Exception as exc:
         logger.error(f"Error in daily_reminder job: {exc}")
     finally:
         return_conn(conn)
+
+
+async def low_stock_alert(context: ContextTypes.DEFAULT_TYPE):
+    """Notify the admin at most once per day when paid customers cannot receive codes."""
+    global last_stock_alert
+    stock, waiting = get_code_stock()
+    available = sum(row['count'] for row in stock if row['status'] == 'available')
+    waiting_total = sum(row['count'] for row in waiting)
+    today = datetime.date.today()
+    if waiting_total and available == 0 and last_stock_alert != today:
+        await context.bot.send_message(ADMIN_ID, f"⚠️ Code stock alert: {waiting_total} paid customer(s) are waiting and no access codes are available. Use /add_code <code> [trial|premium].")
+        last_stock_alert = today
 
 
 # ==================== ADMIN PACKAGE MANAGEMENT COMMANDS ====================
@@ -901,16 +1190,11 @@ async def admin_activate_premium(update: Update, context: ContextTypes.DEFAULT_T
         return
     
     # Activate premium package
-    PACKAGES['glampremium']['is_active'] = True
+    PACKAGES['premium']['is_active'] = True
     
     await update.message.reply_text(
-        "✅ Premium package (GlamPremium) has been activated!\n\n"
-        "New users will now see the option to purchase GlamPremium.\n"
-        "Registered users can upgrade to GlamPremium.\n\n"
-        "Flutterwave Payment Links:\n"
-        f"• Basic (New): {FLUTTERWAVE_BASIC_NEW_USER}\n"
-        f"• Premium (New): {FLUTTERWAVE_PREMIUM_NEW_USER}\n"
-        f"• Upgrade: {FLUTTERWAVE_UPGRADE}"
+        "✅ Premium package (Evermore AI Premium) has been activated!\n\n"
+        "New users can now buy an EverAI Premium verified access code."
     )
     log_action(chat_id, "premium_activated")
 
@@ -923,29 +1207,77 @@ async def admin_deactivate_premium(update: Update, context: ContextTypes.DEFAULT
         return
     
     # Deactivate premium package
-    PACKAGES['glampremium']['is_active'] = False
+    PACKAGES['premium']['is_active'] = False
     
     await update.message.reply_text(
-        "✅ Premium package (GlamPremium) has been deactivated!\n\n"
-        "New users will only see GlamFee option.\n"
-        "Registered users cannot upgrade to GlamPremium.\n\n"
-        "Only GlamFee is now available for purchase."
+        "✅ Premium package (Evermore AI Premium) has been deactivated!\n\n"
+        "New users will only see the EverAI Trial plan."
     )
     log_action(chat_id, "premium_deactivated")
+
+
+async def handle_media_upload(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Handle admin explainer media uploads (video, voice, audio)"""
+    chat_id = update.effective_chat.id
+    state = user_state.get(chat_id, {})
+    if state.get('expecting') == 'explainer_media' and chat_id == ADMIN_ID:
+        msg = update.message
+        file_id = None
+        file_type = None
+
+        if msg.video:
+            file_id = msg.video.file_id
+            file_type = 'video'
+        elif msg.voice:
+            file_id = msg.voice.file_id
+            file_type = 'voice'
+        elif msg.audio:
+            file_id = msg.audio.file_id
+            file_type = 'audio'
+        elif msg.document and msg.document.mime_type and msg.document.mime_type.startswith('video/'):
+            file_id = msg.document.file_id
+            file_type = 'video'
+
+        if file_id and file_type:
+            set_setting('explainer_file_id', file_id)
+            set_setting('explainer_file_type', file_type)
+            state['expecting'] = None
+            await update.message.reply_text(
+                f"✅ Explainer media updated successfully!\n\nType: *{file_type.capitalize()}*\nFile ID: `{file_id}`",
+                parse_mode='Markdown'
+            )
+            return
+
+        await update.message.reply_text("Please send a valid video, voice note, or audio file.")
+
+
+async def cmd_help(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Smart /help command: Admin gets admin command list, users get standard help menu"""
+    chat_id = update.effective_chat.id
+    if chat_id == ADMIN_ID:
+        await admin_help(update, context)
+    else:
+        await help_menu(update, context)
 
 
 # ==================== BOT INITIALIZATION AND RUN ====================
 
 async def run_bot():
-    global application
+    global application, bot_loop
+    bot_loop = asyncio.get_running_loop()
     application = Application.builder().token(BOT_TOKEN).build()
 
     # === YOUR HANDLERS (exactly as before) ===
     application.add_handler(CommandHandler("start", start))
+    application.add_handler(CommandHandler("help", cmd_help))
     application.add_handler(CommandHandler("menu", show_main_menu))
     application.add_handler(CommandHandler("stats", stats))
     application.add_handler(CommandHandler("support", support))
     application.add_handler(CommandHandler("add_task", add_task))
+    application.add_handler(CommandHandler("add_code", add_code_command))
+    application.add_handler(CommandHandler("code_stock", code_stock_command))
+    application.add_handler(CommandHandler("revoke_code", revoke_code_command))
+    application.add_handler(CommandHandler("export_payments", export_payments_command))
     application.add_handler(CommandHandler("broadcast", admin_broadcast))
     application.add_handler(CommandHandler("analytics", admin_analytics))
     application.add_handler(CommandHandler("stats_package", admin_stats_by_package))
@@ -953,6 +1285,7 @@ async def run_bot():
     application.add_handler(CommandHandler("approve_payment", admin_approve_payment))
     application.add_handler(CommandHandler("reject_payment", admin_reject_payment))
     application.add_handler(CommandHandler("payments_pending", admin_pending_payments))
+    application.add_handler(CommandHandler("set_explainer", admin_set_explainer))
     application.add_handler(CommandHandler("admin_help", admin_help))
     
     # Premium package management commands
@@ -961,6 +1294,7 @@ async def run_bot():
 
     application.add_handler(CallbackQueryHandler(button_handler))
     application.add_handler(MessageHandler(filters.PHOTO, handle_photo))
+    application.add_handler(MessageHandler(filters.VIDEO | filters.VOICE | filters.AUDIO, handle_media_upload))
     application.add_handler(MessageHandler(filters.Document.ALL, handle_document))
     application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_text))
     application.add_handler(MessageHandler(filters.COMMAND, handle_invalid_command))
@@ -968,6 +1302,7 @@ async def run_bot():
 
     # Job queue
     application.job_queue.run_repeating(daily_reminder, interval=86400, first=30)
+    application.job_queue.run_repeating(low_stock_alert, interval=3600, first=60)
 
     logger.info("🚀 Starting bot with polling...")
 

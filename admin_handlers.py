@@ -3,7 +3,7 @@ from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import ContextTypes
 from config import ADMIN_ID
 from db import get_analytics, log_interaction, get_conn, return_conn
-from payments import get_payment, approve_payment, reject_payment, list_pending_payments
+from payments import get_payment, approve_payment, reject_payment, list_pending_payments, allocate_access_code
 import datetime
 
 logger = logging.getLogger(__name__)
@@ -34,6 +34,9 @@ async def admin_analytics(update: Update, context: ContextTypes.DEFAULT_TYPE):
             "👥 USER STATISTICS\n"
             f"• Total Users: {users['total_users']}\n"
             f"• Registered Users: {users['registered_users']}\n"
+            f"• Code Buyers: {users['code_buyers']}\n"
+            f"• Bot Engagements: {analytics['engagements']}\n"
+            f"• Codes Issued: {analytics['issued_codes']}\n"
             f"• Total Platform Balance: ${users['total_balance']:.2f}\n"
             f"• Average User Balance: ${users['avg_balance']:.2f}\n\n"
             "💳 PAYMENT STATISTICS\n"
@@ -141,19 +144,33 @@ async def admin_approve_payment(update: Update, context: ContextTypes.DEFAULT_TY
     if not payment:
         await update.message.reply_text("Payment not found.")
         return
-    approve_payment(payment_id)
+    payment, notifications = approve_payment(payment_id)
+    if not payment or payment['status'] != 'approved':
+        await update.message.reply_text(f"Payment {payment_id} was already processed.")
+        return
+
+    # Send multi-tier referral notifications
+    for notif in notifications:
+        try:
+            await context.bot.send_message(
+                notif['chat_id'],
+                f"🎉 *Referral Commission Alert!*\n"
+                f"You received ₦{notif['amount']:.2f} (Level {notif['level']}) commission from @{notif['payer_username']}!",
+                parse_mode='Markdown'
+            )
+        except Exception as e:
+            logger.error(f"Failed to send commission alert to {notif['chat_id']}: {e}")
+
     conn = get_conn()
     try:
         cursor = conn.cursor()
-        if payment['type'] == 'registration':
-            cursor.execute(
-                "UPDATE users SET payment_status=%s WHERE chat_id=%s",
-                ('pending_details', payment['chat_id']),
-            )
-            await context.bot.send_message(
-                payment['chat_id'],
-                "✅ Your payment has been approved. Please send your full name to continue registration."
-            )
+        allocation = allocate_access_code(payment_id)
+        if allocation:
+            code, _ = allocation
+            await context.bot.send_message(payment['chat_id'], f"✅ Payment approved. Your verified access code is: `{code}`", parse_mode='Markdown')
+        else:
+            cursor.execute("UPDATE payments SET status='pending_code' WHERE id=%s", (payment_id,))
+            await context.bot.send_message(payment['chat_id'], "✅ Payment approved. Your code is pending stock and will be delivered automatically.")
     finally:
         return_conn(conn)
     await update.message.reply_text(f"Payment {payment_id} approved.")
@@ -203,6 +220,22 @@ async def admin_pending_payments(update: Update, context: ContextTypes.DEFAULT_T
     await update.message.reply_text(text)
     log_interaction(chat_id, "pending_payments")
 
+async def admin_set_explainer(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Admin command to set new explainer media via Telegram file upload"""
+    chat_id = update.effective_chat.id
+    if chat_id != ADMIN_ID:
+        await update.message.reply_text("This command is restricted to the admin.")
+        return
+
+    context.user_data['expecting'] = 'explainer_media'
+    await update.message.reply_text(
+        "📹 *SET EXPLAINER MEDIA*\n\n"
+        "Please send a Video, Voice note, or Audio file now to set it as the official Evermore AI explainer media.\n\n"
+        "*(Type /cancel to abort)*",
+        parse_mode='Markdown'
+    )
+    log_interaction(chat_id, "set_explainer_initiated")
+
 async def admin_help(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Show admin help menu"""
     chat_id = update.effective_chat.id
@@ -215,10 +248,17 @@ async def admin_help(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "/analytics - View platform analytics\n"
         "/stats_package - Users by package\n"
         "/broadcast - Send message to all users\n"
+        "/set_explainer - Upload new explainer video/voice note\n"
         "/payment_approve - Approve pending payment\n"
         "/approve_payment <payment_id> - Approve a payment immediately\n"
         "/reject_payment <payment_id> - Reject a payment immediately\n"
         "/payments_pending - List pending payments\n"
+        "/add_code <code> [trial|premium] [valid_days] - Add inventory and deliver waiting codes\n"
+        "/code_stock - View code inventory and waiting deliveries\n"
+        "/revoke_code <code> [reason] - Revoke an access code\n"
+        "/export_payments - Download payments as CSV\n"
+        "/activate_premium - Show the Premium plan\n"
+        "/deactivate_premium - Hide the Premium plan\n"
         "/add_task - Add new task\n"
         "/add_task <type> <link> <reward>\n"
         "\nExample:\n"

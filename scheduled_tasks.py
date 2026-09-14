@@ -142,7 +142,7 @@ class ScheduledTasks:
             for user in inactive_users:
                 try:
                     reminder_text = (
-                        "👋 Hi! We noticed you started your Glamour journey but haven't completed registration yet.\n\n"
+                        "👋 Hi! We noticed you started your Evermore AI journey but haven't completed registration yet.\n\n"
                         "Don't miss out on earning opportunities! Complete your payment and join our community.\n\n"
                         "Use /start to continue your registration."
                     )

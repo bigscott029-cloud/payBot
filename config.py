@@ -12,15 +12,24 @@ GROUP_LINK = os.getenv("GROUP_LINK", "")
 SITE_LINK = os.getenv("SITE_LINK", "")
 AI_BOOST_LINK = os.getenv("AI_BOOST_LINK", "")
 DAILY_TASK_LINK = os.getenv("DAILY_TASK_LINK", "")
-WEBAPP_URL = os.getenv("WEBAPP_URL", "https://Glamour.onrender.com/app")
+WEBAPP_URL = os.getenv("WEBAPP_URL", "https://EvermoreAI.onrender.com/app")
 
-# Flutterwave Payment Links (different for each payment type)
-FLUTTERWAVE_BASIC_NEW_USER = os.getenv("FLUTTERWAVE_BASIC_NEW_USER", "https://flutterwave.com/pay/elideckker0c")
-FLUTTERWAVE_PREMIUM_NEW_USER = os.getenv("FLUTTERWAVE_PREMIUM_NEW_USER", "https://flutterwave.com/pay/exuv4kvor1cn")
-FLUTTERWAVE_UPGRADE = os.getenv("FLUTTERWAVE_UPGRADE", "https://flutterwave.com/pay/tgqtlfmkasxg")
+# Flutterwave. FLUTTERWAVE_SECRET_KEY is required for uniquely tracked,
+# server-verified payments.  Do not put it in source control.
+FLUTTERWAVE_SECRET_KEY = os.getenv("FLUTTERWAVE_SECRET_KEY", "")
+FLUTTERWAVE_WEBHOOK_HASH = os.getenv("FLUTTERWAVE_WEBHOOK_HASH", "")
+PUBLIC_BASE_URL = os.getenv("PUBLIC_BASE_URL", "").rstrip("/")
+FLUTTERWAVE_BASIC_NEW_USER = os.getenv("FLUTTERWAVE_BASIC_NEW_USER", "https://flutterwave.com/pay/p3eghk5rrsmn")
+FLUTTERWAVE_PREMIUM_NEW_USER = os.getenv("FLUTTERWAVE_PREMIUM_NEW_USER", "https://flutterwave.com/pay/p3eghk5rrsmn")
+FLUTTERWAVE_UPGRADE = os.getenv("FLUTTERWAVE_UPGRADE", FLUTTERWAVE_PREMIUM_NEW_USER)
 
 # Deprecated: kept for backward compatibility
 FLUTTERWAVE_PAYMENT_LINK = os.getenv("FLUTTERWAVE_PAYMENT_LINK", FLUTTERWAVE_BASIC_NEW_USER)
+
+# Synchronized from Optinex; override only if plans change there too.
+EVERAI_TRIAL_PRICE = int(os.getenv("EVERAI_TRIAL_PRICE", "6999"))
+EVERAI_PREMIUM_PRICE = int(os.getenv("EVERAI_PREMIUM_PRICE", "13999"))
+EVERAI_PREMIUM_REGULAR_PRICE = int(os.getenv("EVERAI_PREMIUM_REGULAR_PRICE", "20000"))
 
 # Database Configuration
 DATABASE_URL = os.getenv("DATABASE_URL")
@@ -28,21 +37,17 @@ DATABASE_URL = os.getenv("DATABASE_URL")
 # Payment Accounts
 PAYMENT_ACCOUNTS = {
     "Nigeria (Opay)": "󰐕 Account: 6110749592\nBank: Opay\nName: Chike Eluem Olanrewaju",
-    "Nigeria (Zenith)": "󰐕 Account: 2267515466\nBank: Zenith Bank\nName: Chike Eluem Olanrewaju",
-    "Nigeria (MoniePoint)": "󰐕 Account: 5168745850\nBank: MoniePoint\nName: Chike Eluem Olanrewaju",
 }
 
 COUPON_PAYMENT_ACCOUNTS = {
     "Coupon Acct 1 (Opay)": "󰐕 Account: 6110749592\nBank: Opay\nName: Chike Eluem Olanrewaju",
-    "Coupon Acct 2 (Zenith)": "󰐕 Account: 2267515466\nBank: Zenith Bank\nName: Chike Eluem Olanrewaju",
-    "Coupon Acct 3 (MoniePoint)": "󰐕 Account: 5168745850\nBank: MoniePoint\nName: Chike Eluem Olanrewaju",
 }
 
 # FAQs
 FAQS = {
     "what_is_ethereal": {
-        "question": "What is Glamour?",
-        "answer": "Glamour is a platform where you earn money by completing tasks like taking a walk, reading posts, playing games, sending Snapchat streaks, and inviting friends."
+        "question": "What is Evermore AI?",
+        "answer": "Evermore AI is a platform where you earn money by completing tasks like taking a walk, reading posts, playing games, sending Snapchat streaks, and inviting friends."
     },
     "payment_methods": {
         "question": "What payment methods are available?",

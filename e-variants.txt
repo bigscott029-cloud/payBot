@@ -1,4 +1,4 @@
-# Environment Variables for Glamour Telegram PayBot
+# Environment Variables for Evermore AI Telegram PayBot
 # Copy this to a .env file and fill in your values
 
 # Telegram Bot Configuration
@@ -12,8 +12,14 @@ AI_BOOST_LINK=https://your_ai_boost_link
 DAILY_TASK_LINK=https://your_daily_tasks_link
 WEBAPP_URL=https://your_webapp_url.com/app
 
-# Payment Gateway
-FLUTTERWAVE_PAYMENT_LINK=https://flutterwave.com/pay/your_payment_link
+# Flutterwave payment gateway (keep these secret values out of Git)
+FLUTTERWAVE_SECRET_KEY=FLWSECK_TEST-...
+# Public HTTPS URL of this bot service, used for Flutterwave's redirect callback
+PUBLIC_BASE_URL=https://your-bot-service.example.com
+# Optional: verify Flutterwave webhook requests if you add /flutterwave/webhook
+FLUTTERWAVE_WEBHOOK_HASH=your_flutterwave_webhook_hash
+# In the Flutterwave Dashboard, set the webhook URL to:
+# https://your-bot-service.example.com/flutterwave/webhook
 
 # Database Configuration
 DATABASE_URL=postgresql://username:password@host:port/database_name
