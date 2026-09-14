@@ -1267,7 +1267,14 @@ async def run_bot():
     bot_loop = asyncio.get_running_loop()
     application = Application.builder().token(BOT_TOKEN).build()
 
-    # === YOUR HANDLERS (exactly as before) ===
+def main():
+    init_database()
+    keep_alive()
+
+    global application
+    application = Application.builder().token(BOT_TOKEN).build()
+
+    # === HANDLERS ===
     application.add_handler(CommandHandler("start", start))
     application.add_handler(CommandHandler("help", cmd_help))
     application.add_handler(CommandHandler("menu", show_main_menu))
@@ -1305,19 +1312,12 @@ async def run_bot():
     application.job_queue.run_repeating(low_stock_alert, interval=3600, first=60)
 
     logger.info("🚀 Starting bot with polling...")
-
-    await application.initialize()
-    await application.start()
-    await application.updater.start_polling(
+    application.run_polling(
         drop_pending_updates=True,
         allowed_updates=Update.ALL_TYPES
     )
-    # Keep the bot alive forever
-    await asyncio.Event().wait()
 
 
 # ====================== ENTRY POINT ======================
 if __name__ == "__main__":
-    init_database()
-    keep_alive()                    # start the keep-alive first
-    asyncio.run(run_bot())          # ← This is the fix for Python 3.14
+    main()
