@@ -75,7 +75,7 @@ class UserHandlers:
 
         except Exception as e:
             logger.error(f"Unexpected error in start: {e}")
-            await update.message.reply_text("An unexpected error occurred. Please try again or contact @bigscottmedia.")
+            await update.message.reply_text("An unexpected error occurred. Please try again or contact @everaiafrica.")
 
     @handle_db_error
     async def cmd_game(self, update: Update, context: ContextTypes.DEFAULT_TYPE):

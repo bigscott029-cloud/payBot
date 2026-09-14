@@ -404,11 +404,11 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     keyboard = [[InlineKeyboardButton("🚀 Get Started", callback_data="menu")]]
     await update.message.reply_text(
-        "Welcome to Evermore / EverAI.\n\n"
-        "EverAI is presented as a generative-AI training and opportunity platform. "
-        "Select How It Works to see the training, task, and remote-opportunity overview. "
-        "Availability and earnings depend on the work offered; they are not guaranteed.\n\n"
-        "Choose a verified access plan to continue.",
+        "💙♾️↗️ WELCOME TO EVERMORE / EVERAI!\n\n"
+        "🤖 Africa’s generative AI training and opportunity platform.\n\n"
+        "✨ Learn how EverAI works, explore available AI training opportunities, "
+        "and get your verified access plan code in just a few taps.\n\n"
+        "🚀 Ready to get started? Tap the button below, then choose How Evermore Works or Buy Verified Access Plans Code.",
         reply_markup=InlineKeyboardMarkup(keyboard),
     )
 
@@ -635,15 +635,27 @@ async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
             )
             state.update({'expecting': None, 'payment_id': payment_id, 'tx_ref': tx_ref})
             await update.message.reply_text(
-                f"Secure checkout created for ₦{state['amount_naira']:,}. Complete payment with Flutterwave, then return here to verify it.",
+                f"💳 Secure checkout created for ₦{state['amount_naira']:,}.\n\n"
+                "Tap the Flutterwave button below. It opens the secure Flutterwave checkout in Telegram’s in-app browser on supported clients. "
+                "After payment, return here and tap Check payment status.",
                 reply_markup=InlineKeyboardMarkup([
-                    [InlineKeyboardButton("Pay securely with Flutterwave", url=link)],
+                    [InlineKeyboardButton("💳 Pay with Flutterwave", url=link)],
                     [InlineKeyboardButton("Check payment status", callback_data="check_flutterwave")],
+                    [InlineKeyboardButton("🔙 Main Menu", callback_data="menu")],
                 ]),
             )
         except Exception as exc:
             logger.exception("Could not create Flutterwave checkout")
-            await update.message.reply_text("Checkout is unavailable. Please try again later or choose Opay bank transfer.")
+            state['expecting'] = None
+            await update.message.reply_text(
+                "⚠️ Flutterwave checkout is temporarily unavailable. This is usually a payment-gateway configuration issue, not a problem with the EverAI website.\n\n"
+                "Please try again, use Opay transfer, or return to the menu.",
+                reply_markup=InlineKeyboardMarkup([
+                    [InlineKeyboardButton("🔄 Try Flutterwave Again", callback_data="reg_flutterwave_selection")],
+                    [InlineKeyboardButton("🏦 Pay by Opay Transfer", callback_data="reg_bank")],
+                    [InlineKeyboardButton("🔙 Main Menu", callback_data="menu")],
+                ]),
+            )
         return
 
     if state.get('expecting') == 'name':
@@ -821,7 +833,14 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if data == "reg_flutterwave_selection":
         state = user_state.setdefault(chat_id, {})
         state['expecting'] = 'flutterwave_email'
-        await query.edit_message_text("Send the email address Flutterwave should use for your receipt.")
+        await query.edit_message_text(
+            "📧 Send the email address Flutterwave should use for your receipt.\n\n"
+            "You can return to the menu at any time.",
+            reply_markup=InlineKeyboardMarkup([
+                [InlineKeyboardButton("🏦 Use Opay Transfer Instead", callback_data="reg_bank")],
+                [InlineKeyboardButton("🔙 Main Menu", callback_data="menu")],
+            ]),
+        )
         return
 
     if data == "reg_flutterwave_confirm":
@@ -903,7 +922,7 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     if data == "reg_other":
         await query.edit_message_text(
-            "Please contact @bigscottmedia to complete your payment for other regions.",
+            "Please contact @everaiafrica to complete your payment for other regions.",
             reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙 Main Menu", callback_data="menu")]]),
         )
         return
@@ -983,14 +1002,14 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             user_chat_id = payment['chat_id']
             await context.bot.send_message(
                 user_chat_id,
-                "❌ Your payment has been rejected by the admin. Please review the instructions and try again or contact @bigscottmedia."
+                "❌ Your payment has been rejected by the admin. Please review the instructions and try again or contact @everaiafrica."
             )
             await query.edit_message_text(f"Payment {payment_id} rejected.")
             return
 
     if data == "coupon":
         await query.edit_message_text(
-            "Coupon purchases are currently managed by the admin. Please contact @bigscottmedia.",
+            "Verified access purchases are currently managed by the admin. Please contact @everaiafrica.",
             reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙 Main Menu", callback_data="menu")]]),
         )
         return
@@ -1001,15 +1020,23 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             [InlineKeyboardButton("🔙 Main Menu", callback_data="menu")]
         ]
         await query.edit_message_text(
-            "HOW EVERMORE / EVERAI WORKS\n\n"
-            "Evermore is the parent brand of EverAI, a generative-AI assistant platform. "
-            "EverAI is designed to work with leading AI platforms and needs trainers to help assess responses, improve memory, and complete opinion tasks.\n\n"
-            "Possible training tasks\n"
-            "• Rate EverAI responses as Good or Bad — up to $16.2/hour\n"
-            "• Answer simple questions to correct memory — up to $18.6/hour\n"
-            "• Complete opinion or survey tasks — up to $17.2/hour\n\n"
-            "Remote opportunities may include audio transcription, AI content rating, click-and-earn, and survey tasks. Availability, eligibility, and compensation depend on the task offered; no earnings are guaranteed.\n\n"
-            "Choose a verified access plan to continue.",
+            "✔️ HOW EVERMORE 💙♾️↗️ WORKS\n\n"
+            "Evermore is the parent brand of EVERAI,\n"
+            "Africa’s first generative AI assistant.\n\n"
+            "EverAI is built in partnership with leading AI platforms like ChatGPT, Claude, Gemini, and others. Before launch, EverAI needs trainers to teach it human interactions, correct its memory, and rate its responses.\n\n"
+            "💰 EARN UP TO:\n\n"
+            "✅ $16.2/hour — Rate EverAI responses as Good or Bad\n\n"
+            "✅ $18.6/hour — Answer simple questions to correct EverAI’s memory\n\n"
+            "✅ $17.2/hour — Complete opinion/survey tasks with no right or wrong answers\n"
+            "Example: “Ronaldo is better than Messi.”\n\n"
+            "🌐 EVERAI also scans the internet thousands of times daily and alerts subscribers to available remote jobs.\n\n"
+            "💼 Remote opportunities can pay up to $19.2/hour, including:\n\n"
+            "• Audio Transcription (type out short recordings) — up to $12/hour\n"
+            "• AI Content Rating — up to $14.6/hour\n"
+            "• Click n Earn — up to $12.3/hour\n"
+            "• Survey & Opinion Tasks (provide feedback on products or AI responses) — up to $18.6/hour\n\n"
+            "🚀 Recruitment is currently ongoing. Earned rewards are paid three times a week.\n\n"
+            "✨ Tap below to choose your verified access plan.",
             reply_markup=InlineKeyboardMarkup(keyboard)
         )
         

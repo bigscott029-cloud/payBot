@@ -16,8 +16,9 @@ WEBAPP_URL = os.getenv("WEBAPP_URL", "https://EvermoreAI.onrender.com/app")
 
 # Flutterwave. FLUTTERWAVE_SECRET_KEY is required for uniquely tracked,
 # server-verified payments.  Do not put it in source control.
-FLUTTERWAVE_SECRET_KEY = os.getenv("FLUTTERWAVE_SECRET_KEY", "")
-FLUTTERWAVE_WEBHOOK_HASH = os.getenv("FLUTTERWAVE_WEBHOOK_HASH", "")
+# FLW_* aliases keep compatibility with the existing Optinex deployment setup.
+FLUTTERWAVE_SECRET_KEY = os.getenv("FLUTTERWAVE_SECRET_KEY") or os.getenv("FLW_SECRET_KEY", "")
+FLUTTERWAVE_WEBHOOK_HASH = os.getenv("FLUTTERWAVE_WEBHOOK_HASH") or os.getenv("FLW_WEBHOOK_SECRET_HASH", "")
 # Render exposes RENDER_EXTERNAL_URL automatically. WEBHOOK_URL is supported
 # for existing deployments, while PUBLIC_BASE_URL remains the explicit override.
 PUBLIC_BASE_URL = (
@@ -80,7 +81,7 @@ HELP_TOPICS = {
     "reminder": {"label": "Toggle Reminder", "type": "toggle"},
     "faq": {"label": "FAQs", "type": "faq"},
     "apply_coach": {"label": "Apply to become Coach", "type": "text", "text": (
-        "Please contact the Admin @bigscottmedia to discuss your application process"
+        "Please contact the Admin @everaiafrica to discuss your application process"
     )},
     "password_recovery": {"label": "Password Recovery", "type": "input", "text": "Please provide your registered email to request password recovery:"},
 }

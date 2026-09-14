@@ -220,7 +220,7 @@ def ask_evermore_ai(user_query: str) -> str:
         return (
             "✨ *Evermore AI Assistant*\n\n"
             "Evermore AI helps you earn by engaging on social media, reading posts, and completing daily tasks.\n"
-            "Use /menu to view available tasks or contact @bigscottmedia for direct support."
+            "Use /menu to view available tasks or contact @everaiafrica for direct support."
         )
 
     try:
