@@ -1263,15 +1263,10 @@ async def cmd_help(update: Update, context: ContextTypes.DEFAULT_TYPE):
 # ==================== BOT INITIALIZATION AND RUN ====================
 
 async def run_bot():
+    """Run Telegram on an explicitly managed event loop (required by Python 3.14)."""
     global application, bot_loop
     bot_loop = asyncio.get_running_loop()
-    application = Application.builder().token(BOT_TOKEN).build()
 
-def main():
-    init_database()
-    keep_alive()
-
-    global application
     application = Application.builder().token(BOT_TOKEN).build()
 
     # === HANDLERS ===
@@ -1312,10 +1307,26 @@ def main():
     application.job_queue.run_repeating(low_stock_alert, interval=3600, first=60)
 
     logger.info("🚀 Starting bot with polling...")
-    application.run_polling(
+    await application.initialize()
+    await application.start()
+    await application.updater.start_polling(
         drop_pending_updates=True,
-        allowed_updates=Update.ALL_TYPES
+        allowed_updates=Update.ALL_TYPES,
     )
+    try:
+        await asyncio.Event().wait()
+    finally:
+        await application.updater.stop()
+        await application.stop()
+        await application.shutdown()
+
+
+def main():
+    init_database()
+    keep_alive()
+    # asyncio.run creates and installs the event loop explicitly. This avoids
+    # Application.run_polling() relying on the removed implicit loop in Python 3.14.
+    asyncio.run(run_bot())
 
 
 # ====================== ENTRY POINT ======================
