@@ -36,7 +36,7 @@ async def error_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
             logger.error(f"Failed to send error notification: {e}")
     
     # Send notification to admin
-    if context.bot and context.bot._bot_data and update:
+    if context.bot and update:
         try:
             from config import ADMIN_ID
             error_message = (

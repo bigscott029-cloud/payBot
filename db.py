@@ -20,6 +20,14 @@ if url and "sslmode=" not in url and "localhost" not in url and "127.0.0.1" not 
     else:
         url += "?sslmode=require"
 
+parsed_database_url = urlparse.urlparse(url)
+if parsed_database_url.hostname:
+    logger.info(
+        "Database endpoint configured: %s:%s",
+        parsed_database_url.hostname,
+        parsed_database_url.port or 5432,
+    )
+
 try:
     # Supabase's transaction pooler (port 6543) does not support prepared
     # statements. Disable Psycopg's automatic preparation to support it.
@@ -286,17 +294,19 @@ def create_user(chat_id, username, referral_code, referred_by=None):
         return_conn(conn)
 
 def log_interaction(chat_id, action):
-    """Log user interaction"""
-    conn = get_conn()
+    """Best-effort analytics logging; it must never break a bot response."""
+    conn = None
     try:
+        conn = get_conn()
         cursor = conn.cursor()
         cursor.execute("""
             INSERT INTO interactions (chat_id, action) VALUES (%s, %s)
         """, (chat_id, action))
-    except psycopg.Error as e:
-        logger.error(f"Database error in log_interaction: {e}")
+    except Exception as e:
+        logger.warning("Could not log interaction '%s' for %s: %s", action, chat_id, e)
     finally:
-        return_conn(conn)
+        if conn:
+            return_conn(conn)
 
 def get_analytics():
     """Get platform analytics"""
