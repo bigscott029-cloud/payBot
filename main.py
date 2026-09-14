@@ -124,11 +124,23 @@ app = Flask(__name__)
 # Global application instance
 application = None
 bot_loop = None
+telegram_polling_ready = False
+telegram_bot_username = None
 
 
 @app.route('/')
 def home():
     return "Evermore AI is alive!"
+
+
+@app.route('/health')
+def health():
+    """Render/operations health check; does not expose credentials."""
+    return jsonify({
+        "web": "ok",
+        "telegram_polling": telegram_polling_ready,
+        "bot_username": telegram_bot_username,
+    }), 200 if telegram_polling_ready else 503
 
 
 @app.route('/flutterwave/callback')
@@ -1264,7 +1276,7 @@ async def cmd_help(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 async def run_bot():
     """Run Telegram on an explicitly managed event loop (required by Python 3.14)."""
-    global application, bot_loop
+    global application, bot_loop, telegram_polling_ready, telegram_bot_username
     bot_loop = asyncio.get_running_loop()
 
     application = Application.builder().token(BOT_TOKEN).build()
@@ -1308,14 +1320,25 @@ async def run_bot():
 
     logger.info("🚀 Starting bot with polling...")
     await application.initialize()
+    bot = await application.bot.get_me()
+    telegram_bot_username = bot.username
+    logger.info("Telegram token verified for @%s (id=%s)", bot.username, bot.id)
+
+    # A bot cannot receive polling updates while a webhook remains configured.
+    # Do this explicitly so the deployment log confirms the transition.
+    await application.bot.delete_webhook(drop_pending_updates=False)
+    logger.info("Telegram webhook cleared; polling can receive updates.")
     await application.start()
     await application.updater.start_polling(
-        drop_pending_updates=True,
+        drop_pending_updates=False,
         allowed_updates=Update.ALL_TYPES,
     )
+    telegram_polling_ready = True
+    logger.info("Telegram polling is active for @%s", bot.username)
     try:
         await asyncio.Event().wait()
     finally:
+        telegram_polling_ready = False
         await application.updater.stop()
         await application.stop()
         await application.shutdown()
