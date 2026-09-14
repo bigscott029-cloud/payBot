@@ -23,6 +23,9 @@ FLUTTERWAVE_WEBHOOK_HASH=your_flutterwave_webhook_hash
 
 # Database Configuration
 DATABASE_URL=postgresql://username:password@host:port/database_name
+# Transaction pooler (Supabase port 6543) is supported; prepared statements
+# are disabled in db.py. Keep this modest for a single Render worker.
+DATABASE_POOL_MAX_SIZE=4
 
 # Optional: Redis for caching (if you add Redis support later)
 # REDIS_URL=redis://localhost:6379

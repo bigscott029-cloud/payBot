@@ -1,4 +1,5 @@
 import logging
+import os
 import psycopg
 from psycopg_pool import ConnectionPool, PoolTimeout
 from functools import lru_cache
@@ -20,16 +21,19 @@ if url and "sslmode=" not in url and "localhost" not in url and "127.0.0.1" not 
         url += "?sslmode=require"
 
 try:
+    # Supabase's transaction pooler (port 6543) does not support prepared
+    # statements. Disable Psycopg's automatic preparation to support it.
     pool = ConnectionPool(
         url,
         open=True,
-        min_size=0,
-        max_size=10,
+        min_size=1,
+        max_size=int(os.getenv("DATABASE_POOL_MAX_SIZE", "4")),
         timeout=10.0,
         kwargs={
             "row_factory": psycopg.rows.dict_row,
             "autocommit": True,
             "connect_timeout": 10,
+            "prepare_threshold": None,
         }
     )
     logger.info("Database connection pool initialized successfully")
