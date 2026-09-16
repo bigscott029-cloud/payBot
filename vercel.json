@@ -1,0 +1,9 @@
+{
+  "installCommand": "pip install -r requirements.txt",
+  "buildCommand": "python -m py_compile main.py",
+  "functions": {
+    "main.py": {
+      "runtime": "python3.12"
+    }
+  }
+}
