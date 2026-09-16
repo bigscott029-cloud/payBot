@@ -424,6 +424,7 @@ async def show_main_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user = get_user(chat_id)
     buttons = [
         [InlineKeyboardButton("How It Works", callback_data="how_it_works")],
+        [InlineKeyboardButton("💸 Get Registered", callback_data="package_selector")],
         [InlineKeyboardButton("Buy Verified Access Plans Code", callback_data="package_selector")],
         [InlineKeyboardButton("❓ Help", callback_data="help")],
     ]
