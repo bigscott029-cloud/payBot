@@ -408,7 +408,8 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "🤖 Africa’s generative AI training and opportunity platform.\n\n"
         "✨ Learn how EverAI works, explore available AI training opportunities, "
         "and get your verified access plan code in just a few taps.\n\n"
-        "🚀 Ready to get started? Tap the button below, then choose How Evermore Works or Buy Verified Access Plans Code.",
+        "🚀 Ready to get started?\n\n"
+        "Tap the button below, then choose How Evermore Works or Buy Verified Access Plans Code.",
         reply_markup=InlineKeyboardMarkup(keyboard),
     )
 
