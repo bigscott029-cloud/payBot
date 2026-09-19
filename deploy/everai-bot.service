@@ -1,0 +1,16 @@
+[Unit]
+Description=EverAI Telegram Bot
+Wants=network-online.target
+After=network-online.target
+
+[Service]
+Type=simple
+User=ubuntu
+WorkingDirectory=/home/ubuntu/payBot
+EnvironmentFile=/home/ubuntu/payBot/.env
+ExecStart=/home/ubuntu/payBot/.venv/bin/python /home/ubuntu/payBot/main.py
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target
