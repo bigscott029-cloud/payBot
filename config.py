@@ -27,6 +27,7 @@ PUBLIC_BASE_URL = (
     or os.getenv("WEBHOOK_URL")
     or ""
 ).rstrip("/")
+FLUTTERWAVE_REDIRECT_URL = os.getenv("FLUTTERWAVE_REDIRECT_URL", "").rstrip("/")
 FLUTTERWAVE_BASIC_NEW_USER = os.getenv("FLUTTERWAVE_BASIC_NEW_USER", "https://flutterwave.com/pay/p3eghk5rrsmn")
 FLUTTERWAVE_PREMIUM_NEW_USER = os.getenv("FLUTTERWAVE_PREMIUM_NEW_USER", "https://flutterwave.com/pay/p3eghk5rrsmn")
 FLUTTERWAVE_UPGRADE = os.getenv("FLUTTERWAVE_UPGRADE", FLUTTERWAVE_PREMIUM_NEW_USER)

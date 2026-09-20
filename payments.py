@@ -5,7 +5,7 @@ import uuid
 import requests
 from psycopg.types.json import Jsonb
 from db import get_conn, return_conn
-from config import FLUTTERWAVE_SECRET_KEY, PUBLIC_BASE_URL
+from config import FLUTTERWAVE_REDIRECT_URL, FLUTTERWAVE_SECRET_KEY, PUBLIC_BASE_URL
 from redis_cache import cache
 
 logger = logging.getLogger(__name__)
@@ -133,9 +133,10 @@ def initialize_flutterwave_payment(chat_id, plan, amount, email, name="Telegram 
     if not FLUTTERWAVE_SECRET_KEY or not PUBLIC_BASE_URL:
         raise RuntimeError("Flutterwave is not configured. Set FLUTTERWAVE_SECRET_KEY and PUBLIC_BASE_URL.")
     tx_ref = f"everai-{chat_id}-{uuid.uuid4().hex[:12]}"
+    redirect_url = FLUTTERWAVE_REDIRECT_URL or f"{PUBLIC_BASE_URL}/flutterwave/callback"
     payload = {
         "tx_ref": tx_ref, "amount": amount, "currency": "NGN",
-        "redirect_url": f"{PUBLIC_BASE_URL}/flutterwave/callback",
+        "redirect_url": redirect_url,
         "customer": {"email": email, "name": name},
         "customizations": {"title": "EverAI Verified Access Plan", "description": f"{plan} access code"},
         "meta": {"telegram_chat_id": str(chat_id), "plan": plan},
