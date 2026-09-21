@@ -874,7 +874,7 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         state = user_state.setdefault(chat_id, {})
         state['expecting'] = 'reg_screenshot'
         state['payment_method'] = 'bank'
-        buttons = [[InlineKeyboardButton("Pay To A Verified Agent", callback_data=f"reg_account_{name}")] for name in PAYMENT_ACCOUNTS]
+        buttons = [[InlineKeyboardButton("Click Here To Generate Payment Details", callback_data=f"reg_account_{name}")] for name in PAYMENT_ACCOUNTS]
         buttons.append([InlineKeyboardButton("🔙 Main Menu", callback_data="menu")])
         await query.edit_message_text("Select the verified agent payment option below:", reply_markup=InlineKeyboardMarkup(buttons))
         return
