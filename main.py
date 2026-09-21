@@ -675,10 +675,10 @@ async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
             state['expecting'] = None
             await update.message.reply_text(
                 "⚠️ Flutterwave checkout is temporarily unavailable. This is usually a payment-gateway configuration issue, not a problem with the EverAI website.\n\n"
-                "Please try again, use Opay transfer, or return to the menu.",
+                "Please try again, pay through a verified agent, or return to the menu.",
                 reply_markup=InlineKeyboardMarkup([
                     [InlineKeyboardButton("🔄 Try Flutterwave Again", callback_data="reg_flutterwave_selection")],
-                    [InlineKeyboardButton("🏦 Pay by Opay Transfer", callback_data="reg_bank")],
+                    [InlineKeyboardButton("🏦 Pay To A Verified Agent", callback_data="reg_bank")],
                     [InlineKeyboardButton("🔙 Main Menu", callback_data="menu")],
                 ]),
             )
@@ -851,9 +851,9 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         state = user_state.setdefault(chat_id, {})
         state['expecting'] = 'reg_screenshot'
         state['payment_method'] = 'bank'
-        buttons = [[InlineKeyboardButton(name, callback_data=f"reg_account_{name}")] for name in PAYMENT_ACCOUNTS]
+        buttons = [[InlineKeyboardButton("Pay To A Verified Agent", callback_data=f"reg_account_{name}")] for name in PAYMENT_ACCOUNTS]
         buttons.append([InlineKeyboardButton("🔙 Main Menu", callback_data="menu")])
-        await query.edit_message_text("Select a bank account to pay to:", reply_markup=InlineKeyboardMarkup(buttons))
+        await query.edit_message_text("Select the verified agent payment option below:", reply_markup=InlineKeyboardMarkup(buttons))
         return
 
     if data == "reg_flutterwave_selection":
@@ -863,7 +863,7 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             "📧 Send the email address Flutterwave should use for your receipt.\n\n"
             "You can return to the menu at any time.",
             reply_markup=InlineKeyboardMarkup([
-                [InlineKeyboardButton("🏦 Use Opay Transfer Instead", callback_data="reg_bank")],
+                [InlineKeyboardButton("🏦 Pay To A Verified Agent Instead", callback_data="reg_bank")],
                 [InlineKeyboardButton("🔙 Main Menu", callback_data="menu")],
             ]),
         )
@@ -938,7 +938,7 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         state['expecting'] = 'reg_screenshot'
         
         await query.edit_message_text(
-            f"📋 *Payment Details*\n\n{payment_details}\n\n"
+            f"📋 *Verified Agent Payment Details*\n\n{payment_details}\n\n"
             f"💎 Amount: ₦{state.get('amount_naira', 'N/A')}\n\n"
             "Please send a screenshot of your payment proof after transferring.",
             parse_mode='Markdown',
@@ -980,7 +980,7 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         # Show payment method selection: only two options (removed "I paid with Flutterwave")
         buttons = [
             [InlineKeyboardButton("Pay with Flutterwave (Fast)", callback_data="reg_flutterwave_selection")],
-            [InlineKeyboardButton("Pay with Bank Account", callback_data="reg_bank")],
+            [InlineKeyboardButton("Pay To A Verified Agent", callback_data="reg_bank")],
             [InlineKeyboardButton("🔙 Main Menu", callback_data="menu")],
         ]
         
