@@ -562,20 +562,24 @@ async def _handle_payment_proof_upload(update: Update, context: ContextTypes.DEF
             [InlineKeyboardButton("Reject", callback_data=f"reject_payment_{payment_id}")],
         ])
 
-        if file_kind == "document":
-            await context.bot.send_document(
-                ADMIN_ID,
-                document=file_id,
-                caption=caption,
-                reply_markup=reply_markup,
-            )
-        else:
-            await context.bot.send_photo(
-                ADMIN_ID,
-                photo=file_id,
-                caption=caption,
-                reply_markup=reply_markup,
-            )
+        try:
+            if file_kind == "document":
+                await context.bot.send_document(
+                    ADMIN_ID,
+                    document=file_id,
+                    caption=caption,
+                    reply_markup=reply_markup,
+                )
+            else:
+                await context.bot.send_photo(
+                    ADMIN_ID,
+                    photo=file_id,
+                    caption=caption,
+                    reply_markup=reply_markup,
+                )
+        except Exception:
+            logger.exception("Payment proof saved but admin notification failed")
+
         await update.message.reply_text(
             "Transfer proof received. Once approved, your verified access code will be delivered here."
         )
