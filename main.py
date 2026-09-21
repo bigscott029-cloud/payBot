@@ -464,6 +464,25 @@ async def help_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.callback_query.edit_message_text("Help topics:", reply_markup=InlineKeyboardMarkup(buttons))
 
 
+async def acknowledge_admin_payment_action(query, context: ContextTypes.DEFAULT_TYPE, text: str):
+    """Update the admin proof message whether it is text or media."""
+    try:
+        message = query.message
+        has_media = bool(
+            message and (
+                message.photo or message.document or message.video
+                or message.audio or message.voice
+            )
+        )
+        if has_media:
+            await message.edit_caption(caption=text, reply_markup=None)
+        else:
+            await query.edit_message_text(text)
+    except Exception:
+        logger.exception("Could not update admin payment action message")
+        await context.bot.send_message(ADMIN_ID, text)
+
+
 async def stats(update: Update, context: ContextTypes.DEFAULT_TYPE):
     chat_id = update.effective_chat.id
     log_interaction(chat_id, "stats")
@@ -1003,13 +1022,13 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         payment_id = int(data.split("_")[-1])
         payment = get_payment(payment_id)
         if not payment:
-            await query.edit_message_text("Payment record not found.")
+            await acknowledge_admin_payment_action(query, context, "Payment record not found.")
             return
 
         if data.startswith("approve_payment_"):
             approved_payment, _ = approve_payment(payment_id)
             if not approved_payment or approved_payment['status'] != 'approved':
-                await query.edit_message_text(f"Payment {payment_id} was already processed.")
+                await acknowledge_admin_payment_action(query, context, f"Payment {payment_id} was already processed.")
                 return
             user_chat_id = payment['chat_id']
             conn = get_conn()
@@ -1024,7 +1043,7 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
                     await context.bot.send_message(user_chat_id, "✅ Payment approved. Your code is pending stock and will be delivered automatically.")
             finally:
                 return_conn(conn)
-            await query.edit_message_text(f"Payment {payment_id} approved.")
+            await acknowledge_admin_payment_action(query, context, f"Payment {payment_id} approved.")
             return
 
         if data.startswith("reject_payment_"):
@@ -1034,7 +1053,7 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 user_chat_id,
                 "❌ Your payment has been rejected by the admin. Please review the instructions and try again or contact @everaiafrica."
             )
-            await query.edit_message_text(f"Payment {payment_id} rejected.")
+            await acknowledge_admin_payment_action(query, context, f"Payment {payment_id} rejected.")
             return
 
     if data == "coupon":
@@ -1205,8 +1224,32 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             state['expecting'] = data
             await query.edit_message_text(topic["text"], reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙 Help Menu", callback_data="help")]]))
         elif topic["type"] == "toggle":
+            conn = get_conn()
+            try:
+                cursor = conn.cursor()
+                cursor.execute(
+                    """
+                    UPDATE users
+                    SET alarm_setting = CASE WHEN alarm_setting=1 THEN 0 ELSE 1 END
+                    WHERE chat_id=%s
+                    RETURNING alarm_setting
+                    """,
+                    (chat_id,),
+                )
+                row = cursor.fetchone()
+            finally:
+                return_conn(conn)
+
+            if not row:
+                await query.edit_message_text(
+                    "Please tap /start first, then try the reminder toggle again.",
+                    reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙 Help Menu", callback_data="help")]]),
+                )
+                return
+
+            enabled = row["alarm_setting"] == 1
             await query.edit_message_text(
-                "Toggle features are not yet active in this release.",
+                "Daily reminders are now ON." if enabled else "Daily reminders are now OFF.",
                 reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙 Help Menu", callback_data="help")]]),
             )
         elif topic["type"] == "faq":
