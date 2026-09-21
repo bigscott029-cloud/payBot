@@ -3,7 +3,10 @@ from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import ContextTypes
 from config import ADMIN_ID
 from db import get_analytics, log_interaction, get_conn, return_conn
-from payments import get_payment, approve_payment, reject_payment, list_pending_payments, allocate_access_code
+from payments import (
+    get_payment, approve_payment, reject_payment, list_pending_payments,
+    allocate_access_code, PAYMENT_TYPE_REGISTRATION,
+)
 import datetime
 
 logger = logging.getLogger(__name__)
@@ -147,6 +150,26 @@ async def admin_approve_payment(update: Update, context: ContextTypes.DEFAULT_TY
     payment, notifications = approve_payment(payment_id)
     if not payment or payment['status'] != 'approved':
         await update.message.reply_text(f"Payment {payment_id} was already processed.")
+        return
+
+    if payment['type'] == PAYMENT_TYPE_REGISTRATION:
+        conn = get_conn()
+        try:
+            cursor = conn.cursor()
+            cursor.execute(
+                "UPDATE users SET payment_status='payment_approved', package=%s WHERE chat_id=%s",
+                (payment['package'], payment['chat_id']),
+            )
+        finally:
+            return_conn(conn)
+        await context.bot.send_message(
+            payment['chat_id'],
+            "✅ Payment approved.\n\n"
+            "Let’s complete your EverAI registration.\n"
+            "Please send your full name."
+        )
+        await update.message.reply_text(f"Registration payment {payment_id} approved. Details requested from user.")
+        log_interaction(chat_id, "approve_registration_payment")
         return
 
     # Send multi-tier referral notifications

@@ -58,7 +58,8 @@ from db import (
 from payments import (create_payment, get_payment, approve_payment, reject_payment,
                       initialize_flutterwave_payment, verify_flutterwave_payment,
                       add_access_code, fulfill_waiting_codes, allocate_access_code,
-                      get_code_stock, revoke_access_code, payment_export_rows)
+                      get_code_stock, revoke_access_code, payment_export_rows,
+                      PAYMENT_TYPE_COUPON, PAYMENT_TYPE_REGISTRATION)
 from utils import (
     validate_email,
     validate_phone,
@@ -151,6 +152,13 @@ def flutterwave_callback():
         return "Payment reference missing. Return to Telegram and try again.", 400
     try:
         payment, status = verify_flutterwave_payment(tx_ref)
+        if payment and status == 'registration_details':
+            if application and bot_loop:
+                asyncio.run_coroutine_threadsafe(
+                    deliver_registration_details_request(payment['chat_id'], payment.get('package')),
+                    bot_loop,
+                )
+            return "Payment confirmed. Return to Telegram to complete your registration details."
         if payment and status == 'pending_code':
             allocation = allocate_access_code(payment['id'])
             if allocation:
@@ -178,7 +186,13 @@ def flutterwave_webhook():
         return "OK", 200
     try:
         payment, status = verify_flutterwave_payment(tx_ref)
-        if payment and status == 'pending_code':
+        if payment and status == 'registration_details':
+            if application and bot_loop:
+                asyncio.run_coroutine_threadsafe(
+                    deliver_registration_details_request(payment['chat_id'], payment.get('package')),
+                    bot_loop,
+                )
+        elif payment and status == 'pending_code':
             allocation = allocate_access_code(payment['id'])
             if allocation and application and bot_loop:
                 code, paid_payment = allocation
@@ -321,6 +335,20 @@ async def deliver_code(chat_id, code):
     )
 
 
+async def deliver_registration_details_request(chat_id, package=None):
+    state = user_state.setdefault(chat_id, {})
+    state['expecting'] = 'name'
+    if package:
+        state['package'] = package
+        state['package_name'] = PACKAGES.get(package, {}).get('display_name')
+    await application.bot.send_message(
+        chat_id,
+        "✅ Payment confirmed.\n\n"
+        "Let’s complete your EverAI registration.\n"
+        "Please send your full name."
+    )
+
+
 async def add_code_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if update.effective_chat.id != ADMIN_ID:
         await update.message.reply_text("This command is restricted to the admin.")
@@ -401,6 +429,16 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         referral_code = generate_referral_code()
         create_user(chat_id, update.effective_user.username or "Unknown", referral_code, referred_by)
         log_action(chat_id, "user_created", details=f"referred_by={referred_by}")
+        user = get_user(chat_id)
+
+    if user and user.get("payment_status") == "payment_approved":
+        await request_registration_details(
+            context,
+            chat_id,
+            user.get("package"),
+            PACKAGES.get(user.get("package"), {}).get("display_name"),
+        )
+        return
 
     keyboard = [[InlineKeyboardButton("🚀 Get Started", callback_data="menu")]]
     await update.message.reply_text(
@@ -425,7 +463,7 @@ async def show_main_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user = get_user(chat_id)
     buttons = [
         [InlineKeyboardButton("How It Works", callback_data="how_it_works")],
-        [InlineKeyboardButton("💸 Get Registered", callback_data="package_selector")],
+        [InlineKeyboardButton("💸 Get Registered", callback_data="registration_package_selector")],
         [InlineKeyboardButton("Buy Verified Access Plans Code", callback_data="package_selector")],
         [InlineKeyboardButton("❓ Help", callback_data="help")],
     ]
@@ -481,6 +519,21 @@ async def acknowledge_admin_payment_action(query, context: ContextTypes.DEFAULT_
     except Exception:
         logger.exception("Could not update admin payment action message")
         await context.bot.send_message(ADMIN_ID, text)
+
+
+async def request_registration_details(context: ContextTypes.DEFAULT_TYPE, chat_id: int, package=None, package_name=None):
+    state = user_state.setdefault(chat_id, {})
+    state['expecting'] = 'name'
+    if package:
+        state['package'] = package
+    if package_name:
+        state['package_name'] = package_name
+    await context.bot.send_message(
+        chat_id,
+        "✅ Payment approved.\n\n"
+        "Let’s complete your EverAI registration.\n"
+        "Please send your full name."
+    )
 
 
 async def stats(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -552,6 +605,8 @@ async def _handle_payment_proof_upload(update: Update, context: ContextTypes.DEF
     package = state.get('package')
     account = state.get('selected_account')
     payment_method = state.get('payment_method', 'manual')
+    flow_type = state.get('flow_type', 'code')
+    payment_type = PAYMENT_TYPE_REGISTRATION if flow_type == 'registration' else PAYMENT_TYPE_COUPON
     
     if not package or not account:
         await update.message.reply_text("Please choose a package and payment account before sending your screenshot.")
@@ -562,7 +617,7 @@ async def _handle_payment_proof_upload(update: Update, context: ContextTypes.DEF
     try:
         payment_id = create_payment(
             chat_id=chat_id,
-            payment_type='coupon',
+            payment_type=payment_type,
             package=package,
             quantity=1,
             total_amount=total_amount,
@@ -573,7 +628,8 @@ async def _handle_payment_proof_upload(update: Update, context: ContextTypes.DEF
         )
 
         caption = (
-            f"📌 Registration payment proof from @{update.effective_user.username or 'Unknown'} "
+            f"📌 {'Registration' if flow_type == 'registration' else 'Access code'} payment proof "
+            f"from @{update.effective_user.username or 'Unknown'} "
             f"(chat_id: {chat_id})\nPlan: {package}\nAmount: ₦{total_amount}\nPayment ID: {payment_id}"
         )
         reply_markup = InlineKeyboardMarkup([
@@ -600,7 +656,9 @@ async def _handle_payment_proof_upload(update: Update, context: ContextTypes.DEF
             logger.exception("Payment proof saved but admin notification failed")
 
         await update.message.reply_text(
-            "Transfer proof received. Once approved, your verified access code will be delivered here."
+            "Transfer proof received. Once approved, we will continue your registration here."
+            if flow_type == 'registration'
+            else "Transfer proof received. Once approved, your verified access code will be delivered here."
         )
         user_state[chat_id]['expecting'] = None
         user_state[chat_id]['payment_id'] = payment_id
@@ -667,6 +725,14 @@ async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     # Handle admin text commands
     state = user_state.get(chat_id, {})
+    if not state.get('expecting'):
+        user = get_user(chat_id)
+        if user and user.get('payment_status') == 'payment_approved':
+            state = user_state.setdefault(chat_id, {})
+            state['expecting'] = 'name'
+            state['package'] = user.get('package')
+            state['package_name'] = PACKAGES.get(user.get('package'), {}).get('display_name')
+
     if state.get('expecting') == 'support_message':
         await context.bot.send_message(ADMIN_ID, f"Support request from @{update.effective_user.username or 'Unknown'} ({chat_id}): {text}")
         await update.message.reply_text("Thank you! Our support team will contact you soon.")
@@ -681,6 +747,7 @@ async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
             payment_id, tx_ref, link = initialize_flutterwave_payment(
                 chat_id, state['package'], state['amount_naira'], text,
                 update.effective_user.full_name or "Telegram member",
+                PAYMENT_TYPE_REGISTRATION if state.get('flow_type') == 'registration' else PAYMENT_TYPE_COUPON,
             )
             state.update({'expecting': None, 'payment_id': payment_id, 'tx_ref': tx_ref})
             await update.message.reply_text(
@@ -746,9 +813,26 @@ async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 "UPDATE users SET name=%s, email=%s, phone=%s, username=%s, payment_status=%s, registration_date=%s WHERE chat_id=%s",
                 (state['name'], state['email'], state['phone'], username, 'registered', datetime.datetime.now(), chat_id),
             )
+            await context.bot.send_message(
+                ADMIN_ID,
+                "✅ New EverAI registration details submitted\n\n"
+                f"Name: {state['name']}\n"
+                f"Email: {state['email']}\n"
+                f"Phone: {state['phone']}\n"
+                f"Telegram: {username}\n"
+                f"Chat ID: {chat_id}\n"
+                f"Package: {state.get('package_name') or state.get('package', 'N/A')}"
+            )
+            next_steps = (
+                "🎉 Registration complete! Your account is now active.\n\n"
+                "You can now log in and join the official community to start receiving updates and tasks."
+            )
+            if SITE_LINK:
+                next_steps += f"\n\nLogin here: {SITE_LINK}"
+            if GROUP_LINK:
+                next_steps += f"\nJoin the group: {GROUP_LINK}"
             await update.message.reply_text(
-                "🎉 Registration complete! Your account is now active.\n"
-                "You can now use the menu to access your tasks and start earning."
+                next_steps
             )
         except Exception as exc:
             logger.error(f"Error saving registration details: {exc}")
@@ -852,7 +936,9 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await query.edit_message_text("Your withdrawal request has been sent to the admin.")
         return
 
-    if data == "package_selector":
+    if data in ("package_selector", "registration_package_selector"):
+        flow_type = "registration" if data == "registration_package_selector" else "code"
+        user_state[chat_id] = {'flow_type': flow_type}
         buttons = []
         user = get_user(chat_id)
         is_new_user = not user or user.get('payment_status') != 'registered'
@@ -865,7 +951,8 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             buttons.append([InlineKeyboardButton(display_text, callback_data=f"reg_{pkg_id}")])
         
         buttons.append([InlineKeyboardButton("🔙 Main Menu", callback_data="menu")])
-        await query.edit_message_text("💎 Choose your package:", reply_markup=InlineKeyboardMarkup(buttons))
+        title = "💎 Choose your registration package:" if flow_type == "registration" else "💎 Choose your access code plan:"
+        await query.edit_message_text(title, reply_markup=InlineKeyboardMarkup(buttons))
         return
 
     # === SPECIFIC PAYMENT METHOD CALLBACKS (must check BEFORE generic "reg_" check) ===
@@ -934,7 +1021,10 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             return
         try:
             payment, status = verify_flutterwave_payment(tx_ref)
-            if status == 'pending_code':
+            if status == 'registration_details':
+                await request_registration_details(context, chat_id, state.get('package'), state.get('package_name'))
+                await query.edit_message_text("✅ Payment confirmed. Please continue with the registration questions I just sent you.")
+            elif status == 'pending_code':
                 allocation = allocate_access_code(payment['id'])
                 if allocation:
                     code, _ = allocation
@@ -992,12 +1082,14 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         is_upgrade = user and user.get("payment_status") == 'registered'
         
         # Store package info in user_state
+        previous_state = user_state.get(chat_id, {})
         user_state[chat_id] = {
             'package_id': package_id,
             'package': package_id,
             'package_name': package['display_name'],
             'is_upgrade': is_upgrade,
             'amount_naira': package['price_naira'],
+            'flow_type': previous_state.get('flow_type', 'code'),
         }
         
         # Show payment method selection: only two options (removed "I paid with Flutterwave")
@@ -1030,7 +1122,26 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             if not approved_payment or approved_payment['status'] != 'approved':
                 await acknowledge_admin_payment_action(query, context, f"Payment {payment_id} was already processed.")
                 return
-            user_chat_id = payment['chat_id']
+            user_chat_id = approved_payment['chat_id']
+            if approved_payment['type'] == PAYMENT_TYPE_REGISTRATION:
+                conn = get_conn()
+                try:
+                    cursor = conn.cursor()
+                    cursor.execute(
+                        "UPDATE users SET payment_status='payment_approved', package=%s WHERE chat_id=%s",
+                        (approved_payment['package'], user_chat_id),
+                    )
+                finally:
+                    return_conn(conn)
+                await request_registration_details(
+                    context,
+                    user_chat_id,
+                    approved_payment.get('package'),
+                    PACKAGES.get(approved_payment.get('package'), {}).get('display_name'),
+                )
+                await acknowledge_admin_payment_action(query, context, f"Registration payment {payment_id} approved. Details requested from user.")
+                return
+
             conn = get_conn()
             try:
                 cursor = conn.cursor()
@@ -1065,7 +1176,7 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     if data == "how_it_works":
         keyboard = [
-            [InlineKeyboardButton("💎CLICK TO PROCEED!", callback_data="package_selector")],
+            [InlineKeyboardButton("💎CLICK TO PROCEED!", callback_data="registration_package_selector")],
             [InlineKeyboardButton("🔙 Main Menu", callback_data="menu")]
         ]
         await query.edit_message_text(

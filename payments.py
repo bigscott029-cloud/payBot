@@ -128,7 +128,7 @@ def list_pending_payments():
         return_conn(conn)
 
 
-def initialize_flutterwave_payment(chat_id, plan, amount, email, name="Telegram member"):
+def initialize_flutterwave_payment(chat_id, plan, amount, email, name="Telegram member", payment_type=PAYMENT_TYPE_COUPON):
     """Create a unique Flutterwave checkout and retain its reference locally."""
     if not FLUTTERWAVE_SECRET_KEY or not PUBLIC_BASE_URL:
         raise RuntimeError("Flutterwave is not configured. Set FLUTTERWAVE_SECRET_KEY and PUBLIC_BASE_URL.")
@@ -147,7 +147,7 @@ def initialize_flutterwave_payment(chat_id, plan, amount, email, name="Telegram 
     link = response.json().get("data", {}).get("link")
     if not link:
         raise RuntimeError("Flutterwave did not return a payment link.")
-    payment_id = create_payment(chat_id, PAYMENT_TYPE_COUPON, plan, 1, amount, "Flutterwave",
+    payment_id = create_payment(chat_id, payment_type, plan, 1, amount, "Flutterwave",
                                 status="pending_payment", method="flutterwave", tx_ref=tx_ref)
     return payment_id, tx_ref, link
 
@@ -175,6 +175,13 @@ def verify_flutterwave_payment(tx_ref):
                  and int(float(data.get("amount", 0))) == payment['total_amount']
                  and data.get("tx_ref") == tx_ref)
         if valid:
+            if payment['type'] == PAYMENT_TYPE_REGISTRATION:
+                cursor.execute("UPDATE payments SET status='approved', approved_at=%s WHERE id=%s",
+                               (datetime.datetime.now(), payment['id']))
+                cursor.execute("UPDATE users SET payment_status='payment_approved', package=%s WHERE chat_id=%s",
+                               (payment['package'], payment['chat_id']))
+                payment['status'] = 'approved'
+                return payment, 'registration_details'
             cursor.execute("UPDATE payments SET status='pending_code', approved_at=%s WHERE id=%s",
                            (datetime.datetime.now(), payment['id']))
             cursor.execute("UPDATE users SET payment_status='paid_pending_code', package=%s WHERE chat_id=%s",
