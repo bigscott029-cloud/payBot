@@ -524,13 +524,12 @@ async def add_task(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return_conn(conn)
 
 
-async def handle_photo(update: Update, context: ContextTypes.DEFAULT_TYPE):
+async def _handle_payment_proof_upload(update: Update, context: ContextTypes.DEFAULT_TYPE, file_id: str, file_kind: str):
     chat_id = update.effective_chat.id
     state = user_state.get(chat_id, {})
     if state.get('expecting') != 'reg_screenshot':
         return
 
-    file_id = update.message.photo[-1].file_id
     package = state.get('package')
     account = state.get('selected_account')
     payment_method = state.get('payment_method', 'manual')
@@ -554,26 +553,50 @@ async def handle_photo(update: Update, context: ContextTypes.DEFAULT_TYPE):
             method=payment_method,
         )
 
-        await context.bot.send_photo(
-            ADMIN_ID,
-            file_id,
-            caption=(
-                f"📌 Registration payment screenshot from @{update.effective_user.username or 'Unknown'} "
-                f"(chat_id: {chat_id})\nPlan: {package}\nAmount: ₦{total_amount}\nPayment ID: {payment_id}"
-            ),
-            reply_markup=InlineKeyboardMarkup([
-                [InlineKeyboardButton("Approve", callback_data=f"approve_payment_{payment_id}")],
-                [InlineKeyboardButton("Reject", callback_data=f"reject_payment_{payment_id}")],
-            ]),
+        caption = (
+            f"📌 Registration payment proof from @{update.effective_user.username or 'Unknown'} "
+            f"(chat_id: {chat_id})\nPlan: {package}\nAmount: ₦{total_amount}\nPayment ID: {payment_id}"
         )
+        reply_markup = InlineKeyboardMarkup([
+            [InlineKeyboardButton("Approve", callback_data=f"approve_payment_{payment_id}")],
+            [InlineKeyboardButton("Reject", callback_data=f"reject_payment_{payment_id}")],
+        ])
+
+        if file_kind == "document":
+            await context.bot.send_document(
+                ADMIN_ID,
+                document=file_id,
+                caption=caption,
+                reply_markup=reply_markup,
+            )
+        else:
+            await context.bot.send_photo(
+                ADMIN_ID,
+                photo=file_id,
+                caption=caption,
+                reply_markup=reply_markup,
+            )
         await update.message.reply_text(
             "Transfer proof received. Once approved, your verified access code will be delivered here."
         )
         user_state[chat_id]['expecting'] = None
         user_state[chat_id]['payment_id'] = payment_id
-    except Exception as exc:
-        logger.error(f"Error saving payment screenshot: {exc}")
+    except Exception:
+        logger.exception("Error saving payment proof upload")
         await update.message.reply_text("An error occurred while uploading the screenshot. Please try again.")
+
+
+async def handle_photo(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    chat_id = update.effective_chat.id
+    state = user_state.get(chat_id, {})
+    if state.get('expecting') != 'reg_screenshot':
+        return
+
+    if not update.message.photo:
+        await update.message.reply_text("Please send a clear payment screenshot image.")
+        return
+
+    await _handle_payment_proof_upload(update, context, update.message.photo[-1].file_id, "photo")
 
 
 async def handle_document(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -582,12 +605,13 @@ async def handle_document(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if state.get('expecting') != 'reg_screenshot':
         return
 
-    file_id = update.message.document.file_id
-    if not update.message.document.mime_type.startswith('image/'):
+    document = update.message.document
+    mime_type = document.mime_type or ""
+    if not mime_type.startswith('image/'):
         await update.message.reply_text("Please send an image file such as PNG or JPG.")
         return
 
-    await handle_photo(update, context)
+    await _handle_payment_proof_upload(update, context, document.file_id, "document")
 
 
 async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
