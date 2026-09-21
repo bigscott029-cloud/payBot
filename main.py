@@ -1253,7 +1253,16 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙 Help Menu", callback_data="help")]]),
             )
         elif topic["type"] == "faq":
-            await help_menu(update, context)
+            buttons = [
+                [InlineKeyboardButton(faq["question"], callback_data=f"faq_{key}")]
+                for key, faq in FAQS.items()
+            ]
+            buttons.append([InlineKeyboardButton("Ask a different question", callback_data="faq_custom")])
+            buttons.append([InlineKeyboardButton("🔙 Help Menu", callback_data="help")])
+            await query.edit_message_text(
+                "Choose a FAQ question:",
+                reply_markup=InlineKeyboardMarkup(buttons),
+            )
         else:
             content = topic.get("text") or topic.get("url")
             await query.edit_message_text(content, reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙 Help Menu", callback_data="help")]]))
