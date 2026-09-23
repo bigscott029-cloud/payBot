@@ -104,6 +104,10 @@ def init_database():
                 referred_by BIGINT
             )
         """)
+        cursor.execute("ALTER TABLE users ADD COLUMN IF NOT EXISTS registration_intent_at TIMESTAMP")
+        cursor.execute("ALTER TABLE users ADD COLUMN IF NOT EXISTS lead_reminder_stage INTEGER DEFAULT 0")
+        cursor.execute("ALTER TABLE users ADD COLUMN IF NOT EXISTS lead_reminders_opt_out BOOLEAN DEFAULT FALSE")
+        cursor.execute("ALTER TABLE users ADD COLUMN IF NOT EXISTS lead_support_prompt_sent_at TIMESTAMP")
 
         # Payments table
         cursor.execute("""

@@ -6,6 +6,8 @@ load_dotenv()
 # Telegram Bot Configuration
 BOT_TOKEN = os.getenv("BOT_TOKEN")
 ADMIN_ID = int(os.getenv("ADMIN_ID", "0") or "0")
+SUPPORT_ADMIN_ID = int(os.getenv("SUPPORT_ADMIN_ID", "0") or "0")
+SUPPORT_ADMIN_USERNAME = os.getenv("SUPPORT_ADMIN_USERNAME", "everaiafrica").lstrip("@")
 
 # Links
 GROUP_LINK = os.getenv("GROUP_LINK", "")

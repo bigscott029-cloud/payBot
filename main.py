@@ -42,6 +42,8 @@ from config import (
     EVERAI_TRIAL_PRICE,
     EVERAI_PREMIUM_PRICE,
     EVERAI_PREMIUM_REGULAR_PRICE,
+    SUPPORT_ADMIN_ID,
+    SUPPORT_ADMIN_USERNAME,
 )
 from db import (
     init_database,
@@ -118,6 +120,41 @@ PREMIUM_FEATURES = {
     'advanced_analytics': True,
     'withdrawal_fee_waived': True,
 }
+
+LEAD_REMINDER_STEPS = [
+    {
+        "hours": 1,
+        "text": (
+            "You were one step away from joining EverAI.\n\n"
+            "People are already positioning early for AI response rating, memory correction, "
+            "survey tasks, and remote-work alerts. If you still want in, choose your plan and finish your registration."
+        ),
+    },
+    {
+        "hours": 3,
+        "text": (
+            "Quick reminder: EverAI registration is still open.\n\n"
+            "This is the kind of opportunity people wish they entered early: simple AI training tasks, "
+            "remote alerts, and earning routes that can grow as the platform grows."
+        ),
+    },
+    {
+        "hours": 12,
+        "text": (
+            "Still thinking about EverAI?\n\n"
+            "That is fair. But do not let hesitation make you miss the early access window. "
+            "If you need help, the support admin can guide you before you pay."
+        ),
+    },
+    {
+        "hours": 24,
+        "text": (
+            "Last reminder for now.\n\n"
+            "EverAI is built around one big shift: AI platforms need real people to train, rate, and correct responses. "
+            "If you want to keep getting registration reminders, tap Keep Reminders. Otherwise, you can turn them off."
+        ),
+    },
+]
 
 # Flask setup for keep-alive
 app = Flask(__name__)
@@ -536,6 +573,142 @@ async def request_registration_details(context: ContextTypes.DEFAULT_TYPE, chat_
     )
 
 
+def support_admin_markup(include_reminder_controls=False):
+    buttons = []
+    if SUPPORT_ADMIN_USERNAME:
+        buttons.append([InlineKeyboardButton("Message Support Admin", url=f"https://t.me/{SUPPORT_ADMIN_USERNAME}")])
+    buttons.append([InlineKeyboardButton("Continue Registration", callback_data="registration_package_selector")])
+    if include_reminder_controls:
+        buttons.append([
+            InlineKeyboardButton("Keep Reminders", callback_data="lead_reminders_on"),
+            InlineKeyboardButton("Turn Off Reminders", callback_data="lead_reminders_off"),
+        ])
+    return InlineKeyboardMarkup(buttons)
+
+
+def mark_registration_intent(chat_id):
+    conn = get_conn()
+    try:
+        cursor = conn.cursor()
+        cursor.execute(
+            """
+            UPDATE users
+            SET registration_intent_at = COALESCE(registration_intent_at, CURRENT_TIMESTAMP),
+                lead_reminder_stage = COALESCE(lead_reminder_stage, 0),
+                lead_reminders_opt_out = FALSE
+            WHERE chat_id=%s
+            """,
+            (chat_id,),
+        )
+    finally:
+        return_conn(conn)
+
+
+async def lead_warming_reminders(context: ContextTypes.DEFAULT_TYPE):
+    conn = get_conn()
+    try:
+        cursor = conn.cursor()
+        cursor.execute(
+            """
+            SELECT u.chat_id, u.username
+            FROM users u
+            WHERE u.registration_intent_at IS NOT NULL
+              AND u.lead_support_prompt_sent_at IS NULL
+              AND COALESCE(u.lead_reminders_opt_out, FALSE) = FALSE
+              AND COALESCE(u.payment_status, 'new') NOT IN ('registered', 'payment_approved')
+              AND NOT EXISTS (
+                  SELECT 1 FROM payments p
+                  WHERE p.chat_id = u.chat_id
+                    AND p.type = %s
+                    AND p.status IN ('pending_payment', 'approved', 'completed')
+              )
+              AND EXTRACT(EPOCH FROM (CURRENT_TIMESTAMP - u.registration_intent_at)) >= %s
+            ORDER BY u.registration_intent_at
+            LIMIT 25
+            """,
+            (PAYMENT_TYPE_REGISTRATION, 6 * 3600),
+        )
+        support_rows = cursor.fetchall()
+        for row in support_rows:
+            try:
+                await context.bot.send_message(
+                    row["chat_id"],
+                    "A quick note from EverAI support.\n\n"
+                    f"@{SUPPORT_ADMIN_USERNAME} is the support admin for registration help. "
+                    "If anything is unclear about payment, registration, or how the earning process works, "
+                    "you can ask before continuing.",
+                    reply_markup=support_admin_markup(False),
+                )
+                if SUPPORT_ADMIN_ID:
+                    await context.bot.send_message(
+                        SUPPORT_ADMIN_ID,
+                        "Lead support prompt sent.\n"
+                        f"Chat ID: {row['chat_id']}\n"
+                        f"Username: @{row['username'] or 'unknown'}"
+                    )
+                cursor.execute(
+                    "UPDATE users SET lead_support_prompt_sent_at=CURRENT_TIMESTAMP WHERE chat_id=%s",
+                    (row["chat_id"],),
+                )
+            except Exception as exc:
+                logger.error("Failed sending 6-hour support prompt to %s: %s", row["chat_id"], exc)
+
+        cursor.execute(
+            """
+            SELECT u.chat_id, u.lead_reminder_stage
+            FROM users u
+            WHERE u.registration_intent_at IS NOT NULL
+              AND COALESCE(u.lead_reminders_opt_out, FALSE) = FALSE
+              AND COALESCE(u.lead_reminder_stage, 0) < %s
+              AND COALESCE(u.payment_status, 'new') NOT IN ('registered', 'payment_approved')
+              AND NOT EXISTS (
+                  SELECT 1 FROM payments p
+                  WHERE p.chat_id = u.chat_id
+                    AND p.type = %s
+                    AND p.status IN ('pending_payment', 'approved', 'completed')
+              )
+              AND EXTRACT(EPOCH FROM (CURRENT_TIMESTAMP - u.registration_intent_at)) >=
+                  CASE COALESCE(u.lead_reminder_stage, 0)
+                      WHEN 0 THEN %s
+                      WHEN 1 THEN %s
+                      WHEN 2 THEN %s
+                      ELSE %s
+                  END
+            ORDER BY u.registration_intent_at
+            LIMIT 25
+            """,
+            (
+                len(LEAD_REMINDER_STEPS),
+                PAYMENT_TYPE_REGISTRATION,
+                LEAD_REMINDER_STEPS[0]["hours"] * 3600,
+                LEAD_REMINDER_STEPS[1]["hours"] * 3600,
+                LEAD_REMINDER_STEPS[2]["hours"] * 3600,
+                LEAD_REMINDER_STEPS[3]["hours"] * 3600,
+            ),
+        )
+        rows = cursor.fetchall()
+        for row in rows:
+            stage = row["lead_reminder_stage"] or 0
+            reminder = LEAD_REMINDER_STEPS[stage]
+            include_controls = stage == len(LEAD_REMINDER_STEPS) - 1
+            try:
+                await context.bot.send_message(
+                    row["chat_id"],
+                    reminder["text"],
+                    reply_markup=support_admin_markup(include_controls),
+                )
+                cursor.execute(
+                    "UPDATE users SET lead_reminder_stage=%s WHERE chat_id=%s",
+                    (stage + 1, row["chat_id"]),
+                )
+            except Exception as exc:
+                logger.error("Failed sending lead reminder to %s: %s", row["chat_id"], exc)
+    except Exception as exc:
+        logger.error("Error in lead_warming_reminders job: %s", exc)
+    finally:
+        return_conn(conn)
+
+
 async def stats(update: Update, context: ContextTypes.DEFAULT_TYPE):
     chat_id = update.effective_chat.id
     log_interaction(chat_id, "stats")
@@ -914,6 +1087,38 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await stats(update, context)
         return
 
+    if data == "lead_reminders_off":
+        conn = get_conn()
+        try:
+            cursor = conn.cursor()
+            cursor.execute("UPDATE users SET lead_reminders_opt_out=TRUE WHERE chat_id=%s", (chat_id,))
+        finally:
+            return_conn(conn)
+        await query.edit_message_text("No problem. Registration reminders are now turned off.")
+        return
+
+    if data == "lead_reminders_on":
+        conn = get_conn()
+        try:
+            cursor = conn.cursor()
+            cursor.execute(
+                """
+                UPDATE users
+                SET lead_reminders_opt_out=FALSE,
+                    lead_reminder_stage=0,
+                    registration_intent_at=CURRENT_TIMESTAMP
+                WHERE chat_id=%s
+                """,
+                (chat_id,),
+            )
+        finally:
+            return_conn(conn)
+        await query.edit_message_text(
+            "Done. I’ll keep reminding you about EverAI registration.",
+            reply_markup=support_admin_markup(False),
+        )
+        return
+
     if data == "refer_friend":
         link = f"https://t.me/{context.bot.username}?start=ref_{chat_id}"
         await query.edit_message_text(
@@ -939,6 +1144,8 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if data in ("package_selector", "registration_package_selector"):
         flow_type = "registration" if data == "registration_package_selector" else "code"
         user_state[chat_id] = {'flow_type': flow_type}
+        if flow_type == "registration":
+            mark_registration_intent(chat_id)
         buttons = []
         user = get_user(chat_id)
         is_new_user = not user or user.get('payment_status') != 'registered'
@@ -1537,6 +1744,7 @@ async def run_bot():
     # Job queue
     application.job_queue.run_repeating(daily_reminder, interval=86400, first=30)
     application.job_queue.run_repeating(low_stock_alert, interval=3600, first=60)
+    application.job_queue.run_repeating(lead_warming_reminders, interval=600, first=120)
 
     logger.info("🚀 Starting bot with polling...")
     await application.initialize()
